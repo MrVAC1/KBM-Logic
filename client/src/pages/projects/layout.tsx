@@ -1,5 +1,4 @@
 import type React from "react"
-import { AppSidebar } from "@/components/app-sidebar"
 
 export default function ProjectsLayout({
   children,
@@ -7,9 +6,8 @@ export default function ProjectsLayout({
   children: React.ReactNode
 }) {
   return (
-    <div className="flex min-h-screen">
-      <AppSidebar />
-      <main className="flex-1">{children}</main>
+    <div className="min-h-screen">
+      <main className="w-full">{children}</main>
     </div>
   )
 }
