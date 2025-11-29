@@ -1,0 +1,447 @@
+import { useState, useEffect, useCallback } from "react"
+import { useSearchParams } from "react-router-dom"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Switch } from "@/components/ui/switch"
+import { Label } from "@/components/ui/label"
+import { Plus, Clock, AlertTriangle, CheckCircle2, XCircle, MessageSquare } from "lucide-react"
+import { CreateTaskModal } from "@/components/create-task-modal"
+import { TaskDetailModal } from "@/components/task-detail-modal"
+import { tasks as tasksAPI } from "@/services/api"
+import { useProject } from "@/contexts/ProjectContext"
+import { useAuth } from "@/contexts/AuthContext"
+import { toast } from "sonner"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Textarea } from "@/components/ui/textarea"
+import { extractArrayFromResponse, safeArray, safeFilter } from "@/lib/safeUtils"
+
+const columns = [
+  { id: "Todo", title: "To Do", color: "border-slate-500", status: "Todo" },
+  { id: "In Progress", title: "In Progress", color: "border-blue-500", status: "In Progress" },
+  { id: "Review", title: "Review", color: "border-yellow-500", status: "Review" },
+  { id: "Done", title: "Done", color: "border-green-500", status: "Done" },
+]
+
+export default function KanbanPage() {
+  const [searchParams] = useSearchParams()
+  const projectId = searchParams.get('project')
+  const { currentProject, hasPermission, getUserRole } = useProject()
+  const { user } = useAuth()
+  
+  const [tasks, setTasks] = useState<any[]>([])
+  const [loading, setLoading] = useState(false)
+  const [showCreateTask, setShowCreateTask] = useState(false)
+  const [selectedTask, setSelectedTask] = useState<any | null>(null)
+  const [showMyTasksOnly, setShowMyTasksOnly] = useState(false)
+  const [showRequestChangesModal, setShowRequestChangesModal] = useState(false)
+  const [requestChangesTask, setRequestChangesTask] = useState<any | null>(null)
+  const [requestChangesComment, setRequestChangesComment] = useState("")
+
+  // Load tasks from API
+  const loadTasks = useCallback(async () => {
+    if (!projectId) {
+      setTasks([])
+      return
+    }
+    
+    setLoading(true)
+    try {
+      const response = await tasksAPI.getByProject(projectId)
+      // Use safe utility to extract array from response
+      const tasksData = extractArrayFromResponse<any>(response)
+      // CRITICAL: Always set an array, never null/undefined
+      setTasks(safeArray(tasksData))
+    } catch (error: any) {
+      console.error('❌ Failed to load tasks:', error)
+      toast.error('Failed to load tasks')
+      // CRITICAL: Always set empty array on error
+      setTasks([])
+    } finally {
+      setLoading(false)
+    }
+  }, [projectId])
+
+  useEffect(() => {
+    loadTasks()
+  }, [loadTasks])
+
+  // Filter tasks with defensive checks
+  const getTasksByStatus = (status: string) => {
+    // CRITICAL: Use safe utilities to prevent crashes
+    const safeTasks = safeArray(tasks)
+    let filtered = safeFilter(safeTasks, (task) => task?.status === status)
+    
+    // Apply "My Tasks" filter
+    if (showMyTasksOnly && user?.uid) {
+      filtered = safeFilter(filtered, (task) => {
+        const assignees = safeArray(task?.assignees)
+        return assignees.some((assignee: any) => {
+          const assigneeId = assignee?.userId || assignee?.id || assignee
+          return assigneeId?.toString() === user.uid?.toString()
+        })
+      })
+    }
+    
+    return filtered
+  }
+
+  // State Machine Actions
+  const handleClaimTask = async (task: any) => {
+    if (!projectId || !user?.uid) return
+    
+    try {
+      await tasksAPI.update(task._id || task.id, {
+        status: 'In Progress',
+        assignees: [user.uid],
+      })
+      toast.success('Task claimed and moved to In Progress')
+      loadTasks()
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to claim task')
+    }
+  }
+
+  const handleFinishTask = async (task: any) => {
+    if (!projectId) return
+    
+    try {
+      await tasksAPI.update(task._id || task.id, {
+        status: 'Review',
+      })
+      toast.success('Task moved to Review')
+      loadTasks()
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to finish task')
+    }
+  }
+
+  const handleApproveTask = async (task: any) => {
+    if (!projectId) return
+    
+    // Check if user has Reviewer role or can manage tasks
+    const userRole = getUserRole()
+    const isReviewer = userRole === 'Reviewer' || userRole === 'Admin' || userRole === 'PM'
+    
+    if (!isReviewer && !hasPermission('can_edit_tasks')) {
+      toast.error('Only reviewers can approve tasks')
+      return
+    }
+    
+    try {
+      await tasksAPI.update(task._id || task.id, {
+        status: 'Done',
+      })
+      toast.success('Task approved and moved to Done')
+      loadTasks()
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to approve task')
+    }
+  }
+
+  const handleRequestChanges = async () => {
+    if (!requestChangesTask || !projectId) return
+    
+    try {
+      await tasksAPI.update(requestChangesTask._id || requestChangesTask.id, {
+        status: 'In Progress',
+        // Add comment to description or create a comment field
+        description: `${requestChangesTask.description || ''}\n\n[Requested Changes: ${requestChangesComment}]`,
+      })
+      toast.success('Changes requested, task moved back to In Progress')
+      setShowRequestChangesModal(false)
+      setRequestChangesTask(null)
+      setRequestChangesComment("")
+      loadTasks()
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to request changes')
+    }
+  }
+
+  // Check if user is assigned to task
+  const isAssignedToMe = (task: any) => {
+    if (!user?.uid) return false
+    const assignees = Array.isArray(task?.assignees) ? task.assignees : []
+    return assignees.some((assignee: any) => {
+      const assigneeId = assignee?.userId || assignee?.id || assignee
+      return assigneeId?.toString() === user.uid?.toString()
+    })
+  }
+
+  // Check if user can move task to Done (not Developers)
+  const canMoveToDone = (task: any) => {
+    const userRole = getUserRole()
+    // Developers cannot directly move to Done
+    if (userRole === 'Developer') {
+      return false
+    }
+    return hasPermission('can_edit_tasks') || userRole === 'Admin' || userRole === 'PM' || userRole === 'Reviewer'
+  }
+
+  const getRiskBadge = (probability: number, impact: number) => {
+    const riskScore = probability * impact
+    if (riskScore >= 15) return { label: "Critical", color: "bg-destructive text-destructive-foreground" }
+    if (riskScore >= 10) return { label: "High", color: "bg-warning text-warning-foreground" }
+    if (riskScore >= 5) return { label: "Medium", color: "bg-info text-info-foreground" }
+    return { label: "Low", color: "bg-success text-success-foreground" }
+  }
+
+  const getTotalHours = (task: any) => {
+    if (!task.timeLogs || !Array.isArray(task.timeLogs)) return 0
+    return task.timeLogs.reduce((sum: number, log: any) => {
+      const duration = log.duration || 0 // Duration in seconds
+      return sum + (duration / 3600) // Convert to hours
+    }, 0)
+  }
+
+  if (loading && tasks.length === 0) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="text-center space-y-2">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent mx-auto" />
+          <p className="text-muted-foreground">Loading tasks...</p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-background">
+      <div className="border-b border-border bg-card">
+        <div className="mx-auto max-w-7xl px-6 py-8">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-foreground">Kanban Board</h1>
+              <p className="mt-2 text-muted-foreground">Manage tasks with smart assignment logic</p>
+            </div>
+            <div className="flex items-center gap-4">
+              {/* My Tasks Filter */}
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="my-tasks-filter"
+                  checked={showMyTasksOnly}
+                  onCheckedChange={setShowMyTasksOnly}
+                />
+                <Label htmlFor="my-tasks-filter" className="cursor-pointer">
+                  My Tasks
+                </Label>
+              </div>
+              
+              {hasPermission('can_create_tasks') && (
+                <Button onClick={() => setShowCreateTask(true)}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Create Task
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="mx-auto max-w-7xl px-6 py-8">
+        <div className="flex gap-4 overflow-x-auto pb-4">
+          {columns.map((column) => {
+            const columnTasks = getTasksByStatus(column.status)
+            const isReviewColumn = column.status === 'Review'
+            const isDoneColumn = column.status === 'Done'
+            
+            return (
+              <div 
+                key={column.id} 
+                className="flex flex-col min-w-[350px] max-w-[350px] flex-shrink-0"
+              >
+                {/* Column Header */}
+                <div className={`border-t-4 rounded-t-lg bg-card p-3 mb-2 ${column.color}`}>
+                  <h3 className="font-semibold flex items-center justify-between">
+                    {column.title}
+                    <Badge variant="secondary">{columnTasks.length}</Badge>
+                  </h3>
+                </div>
+
+                {/* Tasks List */}
+                <div className="flex-1 space-y-2 overflow-y-auto pr-2 max-h-[calc(100vh-300px)]">
+                  {columnTasks.map((task) => {
+                    const risk = task.risk || {}
+                    const riskScore = (risk.probability || 1) * (risk.impact || 1)
+                    const assignedToMe = isAssignedToMe(task)
+                    const totalHours = getTotalHours(task)
+                    
+                    return (
+                      <Card
+                        key={task._id || task.id}
+                        className="cursor-pointer hover:border-primary/50 transition-all h-[200px] flex flex-col"
+                        onClick={() => setSelectedTask(task)}
+                      >
+                        <CardHeader className="p-4 pb-2 flex-shrink-0">
+                          <CardTitle className="text-sm font-medium line-clamp-2">{task.title}</CardTitle>
+                        </CardHeader>
+                        <CardContent className="p-4 pt-2 flex-1 flex flex-col justify-between">
+                          {task.description && (
+                            <p className="text-xs text-muted-foreground line-clamp-2 mb-2">{task.description}</p>
+                          )}
+                          
+                          {/* Task Metadata */}
+                          <div className="space-y-2">
+                            {/* Assignees */}
+                            {Array.isArray(task.assignees) && task.assignees.length > 0 && (
+                              <div className="flex items-center gap-1 flex-wrap">
+                                {task.assignees.slice(0, 3).map((assignee: any, idx: number) => {
+                                  const assigneeId = assignee?.userId || assignee?.id || assignee
+                                  const assigneeUser = Array.isArray(currentProject?.members) 
+                                    ? currentProject.members.find((m: any) => 
+                                        (m.userId?._id || m.userId?.id || m.userId)?.toString() === assigneeId?.toString()
+                                      )
+                                    : null
+                                  return (
+                                    <Avatar key={idx} className="h-5 w-5">
+                                      <AvatarFallback className="text-[10px]">
+                                        {assigneeUser?.userId?.displayName?.slice(0, 2).toUpperCase() || 'U'}
+                                      </AvatarFallback>
+                                    </Avatar>
+                                  )
+                                })}
+                                {task.assignees.length > 3 && (
+                                  <span className="text-xs text-muted-foreground">+{task.assignees.length - 3}</span>
+                                )}
+                              </div>
+                            )}
+                            
+                            {/* Time & Risk */}
+                            <div className="flex items-center justify-between text-xs">
+                              {totalHours > 0 && (
+                                <div className="flex items-center gap-1 text-muted-foreground">
+                                  <Clock className="h-3 w-3" />
+                                  {totalHours.toFixed(1)}h
+                                </div>
+                              )}
+                              {riskScore > 1 && (
+                                <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded ${getRiskBadge(risk.probability || 1, risk.impact || 1).color}`}>
+                                  <AlertTriangle className="h-3 w-3" />
+                                  {riskScore}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          
+                          {/* Action Buttons */}
+                          <div className="mt-2 pt-2 border-t border-border flex gap-1" onClick={(e) => e.stopPropagation()}>
+                            {column.status === 'Todo' && !assignedToMe && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="flex-1 text-xs h-7"
+                                onClick={() => handleClaimTask(task)}
+                              >
+                                Claim
+                              </Button>
+                            )}
+                            
+                            {column.status === 'In Progress' && assignedToMe && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="flex-1 text-xs h-7"
+                                onClick={() => handleFinishTask(task)}
+                              >
+                                Finish
+                              </Button>
+                            )}
+                            
+                            {isReviewColumn && (
+                              <>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="flex-1 text-xs h-7"
+                                  onClick={() => handleApproveTask(task)}
+                                  disabled={!canMoveToDone(task)}
+                                >
+                                  <CheckCircle2 className="h-3 w-3 mr-1" />
+                                  Approve
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="flex-1 text-xs h-7"
+                                  onClick={() => {
+                                    setRequestChangesTask(task)
+                                    setShowRequestChangesModal(true)
+                                  }}
+                                >
+                                  <MessageSquare className="h-3 w-3 mr-1" />
+                                  Request Changes
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )
+                  })}
+
+                  {columnTasks.length === 0 && (
+                    <div className="flex items-center justify-center rounded-lg border-2 border-dashed border-border p-8 h-[200px]">
+                      <p className="text-sm text-muted-foreground">No tasks</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Modals */}
+      <CreateTaskModal 
+        open={showCreateTask} 
+        onOpenChange={setShowCreateTask}
+        onSuccess={loadTasks}
+      />
+      
+      {selectedTask && (
+        <TaskDetailModal
+          task={selectedTask}
+          open={!!selectedTask}
+          onOpenChange={(open) => !open && setSelectedTask(null)}
+          onUpdate={loadTasks}
+        />
+      )}
+
+      {/* Request Changes Modal */}
+      <Dialog open={showRequestChangesModal} onOpenChange={setShowRequestChangesModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Request Changes</DialogTitle>
+            <DialogDescription>
+              Provide feedback on why this task needs changes
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="changes-comment">Comment</Label>
+              <Textarea
+                id="changes-comment"
+                placeholder="Explain what needs to be changed..."
+                value={requestChangesComment}
+                onChange={(e) => setRequestChangesComment(e.target.value)}
+                rows={4}
+              />
+            </div>
+            <div className="flex justify-end gap-3">
+              <Button variant="outline" onClick={() => {
+                setShowRequestChangesModal(false)
+                setRequestChangesComment("")
+              }}>
+                Cancel
+              </Button>
+              <Button onClick={handleRequestChanges} disabled={!requestChangesComment.trim()}>
+                Request Changes
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}

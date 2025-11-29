@@ -1,0 +1,139 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Geist fonts for professional typography (Source B) */
+@font-face {
+  font-family: 'Geist';
+  src: url('https://cdn.jsdelivr.net/npm/geist@1.3.0/dist/fonts/geist-sans/Geist-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Geist';
+  src: url('https://cdn.jsdelivr.net/npm/geist@1.3.0/dist/fonts/geist-sans/Geist-Medium.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Geist';
+  src: url('https://cdn.jsdelivr.net/npm/geist@1.3.0/dist/fonts/geist-sans/Geist-SemiBold.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Geist';
+  src: url('https://cdn.jsdelivr.net/npm/geist@1.3.0/dist/fonts/geist-sans/Geist-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Geist Mono';
+  src: url('https://cdn.jsdelivr.net/npm/geist@1.3.0/dist/fonts/geist-mono/GeistMono-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Pixel-perfect copy from project-management-spa (Source B) */
+:root {
+  --background: oklch(0.989 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.656 0.196 237.317);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.763 0.154 195.856);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.763 0.154 195.856);
+  --chart-2: oklch(0.828 0.189 84.429);
+  --chart-3: oklch(0.646 0.222 41.116);
+  --chart-4: oklch(0.488 0.243 264.376);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --radius: 0.5rem;
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.656 0.196 237.317);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+  /* Light mode status colors */
+  --success: oklch(0.696 0.17 162.48);
+  --success-foreground: oklch(0.145 0 0);
+  --warning: oklch(0.828 0.189 84.429);
+  --warning-foreground: oklch(0.145 0 0);
+  --info: oklch(0.656 0.196 237.317);
+  --info-foreground: oklch(0.145 0 0);
+}
+
+.dark {
+  --background: oklch(0.145 0.005 264.052);
+  --foreground: oklch(0.949 0.005 264.052);
+  --card: oklch(0.184 0.006 264.052);
+  --card-foreground: oklch(0.949 0.005 264.052);
+  --popover: oklch(0.165 0.006 264.052);
+  --popover-foreground: oklch(0.949 0.005 264.052);
+  --primary: oklch(0.763 0.154 195.856);
+  --primary-foreground: oklch(0.145 0.005 264.052);
+  --secondary: oklch(0.656 0.196 237.317);
+  --secondary-foreground: oklch(0.949 0.005 264.052);
+  --muted: oklch(0.269 0.008 264.052);
+  --muted-foreground: oklch(0.673 0.012 264.052);
+  --accent: oklch(0.763 0.154 195.856);
+  --accent-foreground: oklch(0.145 0.005 264.052);
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: oklch(0.269 0.008 264.052);
+  --input: oklch(0.269 0.008 264.052);
+  --ring: oklch(0.763 0.154 195.856);
+  --chart-1: oklch(0.763 0.154 195.856);
+  --chart-2: oklch(0.828 0.189 84.429);
+  --chart-3: oklch(0.646 0.222 41.116);
+  --chart-4: oklch(0.696 0.17 162.48);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --sidebar: oklch(0.165 0.006 264.052);
+  --sidebar-foreground: oklch(0.949 0.005 264.052);
+  --sidebar-primary: oklch(0.763 0.154 195.856);
+  --sidebar-primary-foreground: oklch(0.145 0.005 264.052);
+  --sidebar-accent: oklch(0.225 0.008 264.052);
+  --sidebar-accent-foreground: oklch(0.949 0.005 264.052);
+  --sidebar-border: oklch(0.225 0.008 264.052);
+  --sidebar-ring: oklch(0.763 0.154 195.856);
+  --success: oklch(0.696 0.17 162.48);
+  --success-foreground: oklch(0.145 0.005 264.052);
+  --warning: oklch(0.828 0.189 84.429);
+  --warning-foreground: oklch(0.145 0.005 264.052);
+  --info: oklch(0.656 0.196 237.317);
+  --info-foreground: oklch(0.949 0.005 264.052);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  *:focus-visible {
+    outline-color: var(--ring);
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+
