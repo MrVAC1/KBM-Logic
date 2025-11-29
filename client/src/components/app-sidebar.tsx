@@ -28,6 +28,12 @@ const navigationItems = [
     permission: null, // Always visible
   },
   { 
+    name: "Overview", 
+    href: "/workspace/overview", 
+    icon: LayoutDashboard,
+    permission: null, // Always visible when in workspace
+  },
+  { 
     name: "Financial", 
     href: "/workspace/financial", 
     icon: TrendingUp,

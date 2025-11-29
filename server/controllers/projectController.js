@@ -333,8 +333,11 @@ export const updateMemberRole = async (req, res) => {
  * Join project with password
  * POST /api/projects/join
  * 
- * Zero-Trust: New members get "Guest" role with NO permissions.
- * Owner/Admin must manually grant access.
+ * Zero-Trust: New members get "Guest" role (equivalent to "Member" with NO permissions).
+ * Owner/Admin must manually grant access by assigning a role with permissions.
+ * 
+ * Default behavior: Guest role has zero permissions, so users can only see Project Overview
+ * until they are assigned a role with view permissions (can_view_dashboard, can_view_tasks, etc.)
  */
 export const joinProject = async (req, res) => {
   try {
@@ -359,10 +362,11 @@ export const joinProject = async (req, res) => {
     }
 
     // Add user as member with Guest role (zero permissions - inline)
+    // Guest role = "Member" with no permissions - can only view Project Overview
     project.members.push({
       userId,
       roleName: 'Guest',
-      permissions: [], // Zero permissions for new members
+      permissions: [], // Zero permissions for new members - must be granted by Owner/Admin
       joinedAt: new Date(),
     });
     await project.save();
