@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+server/.env
+client/.env
+
+# Build outputs
+dist/
+build/
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Firebase
+# Note: firebase-service-account.json is included for development
+# Remove it before committing to production or use environment variables
+# firebase-service-account.json
+*-service-account.json
+
+# MongoDB
+*.db
+*.db-journal
+
