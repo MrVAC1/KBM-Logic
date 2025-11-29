@@ -147,8 +147,8 @@ export default function ProjectsPage() {
   const handleEnterProject = useCallback((projectId: string) => {
     // Store active project ID
     localStorage.setItem('activeProjectId', projectId)
-    // Navigate to workspace overview (default landing page) with project ID in URL
-    navigate(`/workspace/overview?project=${projectId}`)
+    // Navigate to workspace with project ID in URL
+    navigate(`/workspace/kanban?project=${projectId}`)
   }, [navigate])
 
   const getProjectOwner = (project: any) => {
@@ -269,10 +269,10 @@ export default function ProjectsPage() {
               return (
                 <Card
                   key={projectId}
-                  className="cursor-pointer flex flex-col h-full"
+                  className="cursor-pointer"
                   onClick={() => handleEnterProject(projectId)}
                 >
-                  <CardHeader className="flex-1">
+                  <CardHeader>
                     <div className="flex items-start justify-between mb-2">
                       <div className="flex-1">
                         <CardTitle className="text-xl mb-2">
@@ -282,12 +282,16 @@ export default function ProjectsPage() {
                           <Badge variant={isProjectOwner(project) ? "default" : "secondary"} className="text-xs">
                             {isProjectOwner(project) ? "Owner" : "Member"}
                           </Badge>
+                          <Badge variant="outline" className="text-xs">
+                            <Users className="h-3 w-3 mr-1" />
+                            {memberCount}
+                          </Badge>
                         </div>
                       </div>
                     </div>
                     <CardDescription className="line-clamp-2">{project.description || 'No description'}</CardDescription>
                   </CardHeader>
-                  <CardContent className="flex flex-col flex-1 space-y-4">
+                  <CardContent className="space-y-4">
                     {total > 0 && (
                       <div>
                         <div className="flex items-center justify-between text-sm mb-2">
@@ -300,24 +304,6 @@ export default function ProjectsPage() {
                         <p className="text-xs text-muted-foreground mt-1">{budgetProgress.toFixed(1)}% utilized</p>
                       </div>
                     )}
-                    <div className="flex items-center justify-between w-full pt-2 border-t border-border mt-auto">
-                      <Badge variant="outline" className="text-xs">
-                        <Users className="h-3 w-3 mr-1" />
-                        {memberCount}
-                      </Badge>
-                      {project.createdAt && (
-                        <div className="flex items-center gap-1.5">
-                          <Calendar className="h-3 w-3 text-slate-500" />
-                          <span className="text-xs text-slate-500">
-                            {new Date(project.createdAt).toLocaleDateString('en-GB', {
-                              day: '2-digit',
-                              month: '2-digit',
-                              year: 'numeric'
-                            }).replace(/\//g, '.')}
-                          </span>
-                        </div>
-                      )}
-                    </div>
                   </CardContent>
                 </Card>
               )

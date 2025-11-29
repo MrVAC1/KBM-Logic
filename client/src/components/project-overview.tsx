@@ -1,7 +1,10 @@
+import { useNavigate } from "react-router-dom"
+import { motion } from "framer-motion"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Clock, ShieldAlert, Users } from "lucide-react"
+import { Clock, ShieldAlert, Users, ArrowLeft } from "lucide-react"
 import { useProject } from "@/contexts/ProjectContext"
 
 interface ProjectOverviewProps {
@@ -9,15 +12,33 @@ interface ProjectOverviewProps {
 }
 
 export function ProjectOverview({ project }: ProjectOverviewProps) {
+  const navigate = useNavigate()
   const { getUserRole } = useProject()
 
   return (
     <div className="min-h-screen bg-background">
       <div className="border-b border-border bg-card">
         <div className="mx-auto max-w-7xl px-6 py-8">
-          <div>
-            <h1 className="text-3xl font-bold text-foreground">{project.name}</h1>
-            <p className="mt-2 text-muted-foreground">{project.description || 'No description provided'}</p>
+          <div className="flex items-center justify-between">
+            <div className="flex-1">
+              <h1 className="text-3xl font-bold text-foreground">{project.name}</h1>
+              <p className="mt-2 text-muted-foreground">{project.description || 'No description provided'}</p>
+            </div>
+            <motion.div
+              whileHover={{ scale: 1.05, x: -3 }}
+              whileTap={{ scale: 0.95 }}
+              transition={{ type: "spring", stiffness: 400, damping: 17 }}
+            >
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => navigate('/projects')}
+                className="ml-4 border border-transparent hover:bg-cyan-500/10 hover:text-cyan-400 hover:border-cyan-500/30 transition-all duration-200"
+              >
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back to Projects
+              </Button>
+            </motion.div>
           </div>
         </div>
       </div>
