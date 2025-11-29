@@ -223,6 +223,11 @@ export const getProjectDetails = async (req, res) => {
     await project.populate('ownerId', 'displayName email photoURL');
     const owner = project.ownerId;
     
+    // Populate members with user details (only for active members, not guests/pending)
+    if (!isGuestOrPending) {
+      await project.populate('members.userId', 'displayName email avatar photoURL');
+    }
+    
     // If user is Guest/Pending, return "Safe" limited data only
     // DO NOT return sensitive data (budget, transactions, tasks, etc.)
     if (isGuestOrPending) {
@@ -257,7 +262,7 @@ export const getProjectDetails = async (req, res) => {
       inviteCode: project.inviteCode,
       fixedCosts: project.fixedCosts,
       roles: extractRoleDefinitions(project.members),
-      members: project.members,
+      members: project.members, // Now populated with user details
       createdAt: project.createdAt,
       owner: {
         name: owner?.displayName || owner?.email || 'Unknown',

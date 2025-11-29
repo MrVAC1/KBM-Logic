@@ -11,6 +11,7 @@ import {
   LogOut,
   ShieldAlert,
   UserPlus,
+  Info,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -26,6 +27,12 @@ const navigationItems = [
     href: "/projects", 
     icon: LayoutDashboard,
     permission: null, // Always visible
+  },
+  { 
+    name: "Project Info", 
+    href: "/workspace/info", 
+    icon: Info,
+    permission: null, // Always visible when in workspace
   },
   { 
     name: "Financial", 

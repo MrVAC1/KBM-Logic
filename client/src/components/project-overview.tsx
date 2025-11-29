@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Clock, ShieldAlert, Users, ArrowLeft } from "lucide-react"
+import { Clock, ShieldAlert, ArrowLeft } from "lucide-react"
 import { useProject } from "@/contexts/ProjectContext"
 
 interface ProjectOverviewProps {
@@ -97,6 +97,14 @@ export function ProjectOverview({ project }: ProjectOverviewProps) {
                   </div>
                 </div>
               )}
+
+              {/* Members Row - Read-only for Guests */}
+              <div className="flex items-center justify-between py-2 border-b border-border">
+                <span className="text-sm text-muted-foreground">Members</span>
+                <span className="text-sm text-slate-200">
+                  {project?.members?.length || 0} {project?.members?.length === 1 ? 'member' : 'members'}
+                </span>
+              </div>
 
               <div className="flex items-center justify-between py-2">
                 <span className="text-sm text-muted-foreground">Your Role</span>

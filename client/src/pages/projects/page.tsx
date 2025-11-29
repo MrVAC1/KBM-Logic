@@ -147,8 +147,8 @@ export default function ProjectsPage() {
   const handleEnterProject = useCallback((projectId: string) => {
     // Store active project ID
     localStorage.setItem('activeProjectId', projectId)
-    // Navigate to workspace with project ID in URL
-    navigate(`/workspace/kanban?project=${projectId}`)
+    // Navigate to workspace Project Info page with project ID in URL
+    navigate(`/workspace/info?project=${projectId}`)
   }, [navigate])
 
   const getProjectOwner = (project: any) => {

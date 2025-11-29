@@ -9,6 +9,7 @@ import HomePage from './pages/page';
 import LoginPage from './pages/login/page';
 import OnboardingPage from './pages/onboarding/page';
 import ProjectsPage from './pages/projects/page';
+import ProjectInfoPage from './pages/workspace/project-info/page';
 import FinancialPage from './pages/workspace/financial/page';
 import KanbanPage from './pages/workspace/kanban/page';
 import RisksPage from './pages/workspace/risks/page';
@@ -150,6 +151,12 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       >
+        {/* Project Info - always accessible (no permission required) */}
+        <Route 
+          path="info" 
+          element={<ProjectInfoPage />} 
+        />
+        
         {/* Financial - requires can_view_financial */}
         <Route 
           path="financial" 
@@ -190,8 +197,8 @@ function AppRoutes() {
           } 
         />
 
-        {/* Default workspace redirect */}
-        <Route index element={<Navigate to="kanban" replace />} />
+        {/* Default workspace redirect - go to Project Info */}
+        <Route index element={<Navigate to="info" replace />} />
       </Route>
 
       {/* Catch all - redirect to home */}
