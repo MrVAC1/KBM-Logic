@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Clock, ShieldAlert, ArrowLeft } from "lucide-react"
 import { useProject } from "@/contexts/ProjectContext"
+import { UserNav } from "@/components/user-nav"
 
 interface ProjectOverviewProps {
   project: any
@@ -24,21 +25,26 @@ export function ProjectOverview({ project }: ProjectOverviewProps) {
               <h1 className="text-3xl font-bold text-foreground">{project.name}</h1>
               <p className="mt-2 text-muted-foreground">{project.description || 'No description provided'}</p>
             </div>
-            <motion.div
-              whileHover={{ scale: 1.05, x: -3 }}
-              whileTap={{ scale: 0.95 }}
-              transition={{ type: "spring", stiffness: 400, damping: 17 }}
-            >
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => navigate('/projects')}
-                className="ml-4 border border-transparent hover:bg-cyan-500/10 hover:text-cyan-400 hover:border-cyan-500/30 transition-all duration-200"
+            <div className="flex items-center gap-3">
+              <motion.div
+                whileHover={{ scale: 1.05, x: -3 }}
+                whileTap={{ scale: 0.95 }}
+                transition={{ type: "spring", stiffness: 400, damping: 17 }}
               >
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Back to Projects
-              </Button>
-            </motion.div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => navigate('/projects')}
+                  className="border border-transparent hover:bg-cyan-500/10 hover:text-cyan-400 hover:border-cyan-500/30 transition-all duration-200"
+                >
+                  <ArrowLeft className="w-4 h-4 mr-2" />
+                  Back to Projects
+                </Button>
+              </motion.div>
+              <div className="ml-auto">
+                <UserNav />
+              </div>
+            </div>
           </div>
         </div>
       </div>

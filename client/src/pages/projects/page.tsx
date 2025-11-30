@@ -9,6 +9,7 @@ import { useAuth } from "@/contexts/AuthContext"
 import { useProject } from "@/contexts/ProjectContext"
 import { CreateProjectModal } from "@/components/create-project-modal"
 import { JoinProjectModal } from "@/components/join-project-modal"
+import { UserNav } from "@/components/user-nav"
 import { Progress } from "@/components/ui/progress"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { projects as projectsAPI } from "@/services/api"
@@ -222,12 +223,12 @@ export default function ProjectsPage() {
     <div className="min-h-screen bg-background">
       <div className="border-b border-border bg-card">
         <div className="mx-auto max-w-7xl px-6 py-8">
-          <div className="flex items-center justify-between">
-            <div>
+          <div className="flex items-center">
+            <div className="flex-1">
               <h1 className="text-3xl font-bold text-foreground">Project Portfolio</h1>
               <p className="mt-2 text-muted-foreground">Manage and track all your projects in one place</p>
             </div>
-            <div className="flex gap-3">
+            <div className="flex items-center gap-3">
               <Button variant="outline" onClick={() => setShowJoinModal(true)}>
                 Join Project
               </Button>
@@ -235,6 +236,7 @@ export default function ProjectsPage() {
                 <Plus className="mr-2 h-4 w-4" />
                 Create Project
               </Button>
+              <UserNav />
             </div>
           </div>
         </div>

@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils"
 
 interface OnboardingModalProps {
   open: boolean
+  onOpenChange?: (open: boolean) => void
 }
 
 const cities = [
@@ -28,7 +29,7 @@ const cities = [
   "Denver, CO",
 ]
 
-export function OnboardingModal({ open }: OnboardingModalProps) {
+export function OnboardingModal({ open, onOpenChange }: OnboardingModalProps) {
   const navigate = useNavigate()
   const [step, setStep] = useState(1)
   const [nickname, setNickname] = useState("")
@@ -61,7 +62,7 @@ export function OnboardingModal({ open }: OnboardingModalProps) {
   const progress = (step / 3) * 100
 
   return (
-    <Dialog open={open} modal>
+    <Dialog open={open} onOpenChange={onOpenChange} modal>
       <DialogContent className="max-w-2xl" onPointerDownOutside={(e) => e.preventDefault()}>
         <DialogHeader>
           <DialogTitle className="text-2xl">Complete Your Profile</DialogTitle>
