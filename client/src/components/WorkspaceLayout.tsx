@@ -86,9 +86,9 @@ export default function WorkspaceLayout() {
   }
 
   return (
-    <div className="flex min-h-screen bg-background">
+    <div className="flex h-screen overflow-hidden bg-background">
       <AppSidebar />
-      <main className="flex-1 overflow-auto">
+      <main className="flex-1 overflow-y-auto h-full">
         <Outlet />
       </main>
     </div>

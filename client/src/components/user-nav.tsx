@@ -28,18 +28,23 @@ export function UserNav() {
     return null
   }
 
+  const displayName = user.displayName || user.email?.split('@')[0] || "User"
+
   return (
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button className="relative flex h-9 w-9 items-center justify-center rounded-full ring-offset-background transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
-            <Avatar className="h-9 w-9">
+          <button className="relative flex items-center justify-center rounded-full md:gap-2 md:border md:border-cyan-500/30 md:px-3 md:py-1 transition-all duration-200 md:hover:bg-cyan-500/10 md:hover:border-cyan-500/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+            <span className="hidden md:block text-sm font-medium text-foreground">
+              {displayName}
+            </span>
+            <Avatar className="h-9 w-9 md:h-8 md:w-8">
               <AvatarImage 
                 src={user.photoURL || "/placeholder.svg"} 
-                alt={user.displayName || "User"} 
+                alt={displayName} 
               />
               <AvatarFallback>
-                {(user.displayName || "U").slice(0, 2).toUpperCase()}
+                {displayName.slice(0, 2).toUpperCase()}
               </AvatarFallback>
             </Avatar>
           </button>
@@ -48,7 +53,7 @@ export function UserNav() {
           <DropdownMenuLabel className="font-normal">
             <div className="flex flex-col space-y-1">
               <p className="text-sm font-medium leading-none">
-                {user.displayName || "User"}
+                {displayName}
               </p>
               <p className="text-xs leading-none text-muted-foreground">
                 {user.email}

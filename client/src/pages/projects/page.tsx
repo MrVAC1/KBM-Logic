@@ -223,19 +223,12 @@ export default function ProjectsPage() {
     <div className="min-h-screen bg-background">
       <div className="border-b border-border bg-card">
         <div className="mx-auto max-w-7xl px-6 py-8">
-          <div className="flex items-center">
-            <div className="flex-1">
+          <div className="flex items-center justify-between">
+            <div>
               <h1 className="text-3xl font-bold text-foreground">Project Portfolio</h1>
               <p className="mt-2 text-muted-foreground">Manage and track all your projects in one place</p>
             </div>
-            <div className="flex items-center gap-3">
-              <Button variant="outline" onClick={() => setShowJoinModal(true)}>
-                Join Project
-              </Button>
-              <Button onClick={() => setShowCreateModal(true)}>
-                <Plus className="mr-2 h-4 w-4" />
-                Create Project
-              </Button>
+            <div className="ml-auto">
               <UserNav />
             </div>
           </div>
@@ -243,6 +236,20 @@ export default function ProjectsPage() {
       </div>
 
       <div className="mx-auto max-w-7xl px-6 py-8">
+        {/* Toolbar Section */}
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-xl font-semibold text-foreground">My Projects</h2>
+          <div className="flex items-center gap-4">
+            <Button variant="outline" onClick={() => setShowJoinModal(true)}>
+              Join Project
+            </Button>
+            <Button onClick={() => setShowCreateModal(true)}>
+              <Plus className="mr-2 h-4 w-4" />
+              Create Project
+            </Button>
+          </div>
+        </div>
+
         {userProjects.length === 0 ? (
           <Card className="border-dashed">
             <CardContent className="flex flex-col items-center justify-center py-16">
