@@ -98,12 +98,23 @@ export const projects = {
   deleteRole: (projectId, roleName) => 
     apiClient.delete(`/projects/${projectId}/roles/${roleName}`),
   join: (projectId, password) => apiClient.post('/projects/join', { projectId, password }),
+  getMembers: (projectId) => apiClient.get(`/projects/${projectId}/members`),
+  blockMember: (projectId, userId, reason) => apiClient.post(`/projects/${projectId}/members/block`, { userId, reason }),
+  unblockMember: (projectId, userId) => apiClient.post(`/projects/${projectId}/members/unblock`, { userId }),
+  getBannedUsers: (projectId) => apiClient.get(`/projects/${projectId}/members/banned`),
+  // Departments
+  getDepartments: (projectId) => apiClient.get(`/projects/${projectId}/departments`),
+  createDepartment: (projectId, name) => apiClient.post(`/projects/${projectId}/departments`, { name }),
+  deleteDepartment: (projectId, departmentId) => apiClient.delete(`/projects/${projectId}/departments/${departmentId}`),
+  getDepartmentDetails: (projectId, departmentId) => apiClient.get(`/projects/${projectId}/departments/${departmentId}`),
+  addMemberToDepartment: (projectId, departmentId, memberId) => apiClient.post(`/projects/${projectId}/departments/${departmentId}/members`, { memberId }),
+  removeMemberFromDepartment: (projectId, departmentId, memberId) => apiClient.delete(`/projects/${projectId}/departments/${departmentId}/members/${memberId}`),
   update: (projectId, data) => apiClient.put(`/projects/${projectId}`, data),
   regenerateInvite: (projectId) => apiClient.post(`/projects/${projectId}/regenerate-invite`),
   delete: (projectId) => apiClient.delete(`/projects/${projectId}`),
   // Member management
-  updateMemberRole: (projectId, memberId, roleId) => 
-    apiClient.put(`/projects/${projectId}/members/${memberId}/role`, { roleId }),
+  updateMemberRole: (projectId, memberId, data) => 
+    apiClient.put(`/projects/${projectId}/members/${memberId}/role`, data),
 };
 
 export const tasks = {

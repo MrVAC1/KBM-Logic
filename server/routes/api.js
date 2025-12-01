@@ -22,7 +22,21 @@ import {
   updateRoleOrder,
   createProjectRole,
   deleteProjectRole,
+  getProjectMembers,
+  blockMember,
+  unblockMember,
+  getBannedUsers,
 } from '../controllers/projectController.js';
+
+// Departments
+import {
+  createDepartment,
+  getDepartments,
+  getDepartmentDetails,
+  deleteDepartment,
+  addMemberToDepartment,
+  removeMemberFromDepartment,
+} from '../controllers/departmentController.js';
 
 // Tasks
 import {
@@ -64,6 +78,18 @@ router.delete('/projects/:projectId', verifyToken, checkDatabaseConnection, chec
 
 // Member role management
 router.put('/projects/:projectId/members/:memberId/role', verifyToken, checkProjectMember, requireRoleManagement, updateMemberRole);
+router.get('/projects/:projectId/members', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_manage_settings'), getProjectMembers);
+router.post('/projects/:projectId/members/block', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_manage_settings'), blockMember);
+router.post('/projects/:projectId/members/unblock', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_manage_settings'), unblockMember);
+router.get('/projects/:projectId/members/banned', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_manage_settings'), getBannedUsers);
+
+// Department routes
+router.post('/projects/:projectId/departments', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_manage_settings'), createDepartment);
+router.get('/projects/:projectId/departments', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_manage_settings'), getDepartments);
+router.get('/projects/:projectId/departments/:departmentId', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_manage_settings'), getDepartmentDetails);
+router.delete('/projects/:projectId/departments/:departmentId', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_manage_settings'), deleteDepartment);
+router.post('/projects/:projectId/departments/:departmentId/members', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_manage_settings'), addMemberToDepartment);
+router.delete('/projects/:projectId/departments/:departmentId/members/:memberId', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_manage_settings'), removeMemberFromDepartment);
 
 // Task routes (with granular permissions)
 router.get('/projects/:projectId/tasks', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_view_tasks'), getProjectTasks);

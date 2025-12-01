@@ -38,13 +38,46 @@ export const checkProjectMember = async (req, res, next) => {
     // Owner has ALL permissions
     if (req.isOwner) {
       req.memberRole = 'Owner';
+      req.memberRoles = ['Owner'];
       req.memberPermissions = [...ALL_PERMISSIONS];
     } else if (member) {
-      // Get permissions directly from member (inline role data)
-      req.memberRole = member.roleName || 'Guest';
-      req.memberPermissions = Array.isArray(member.permissions) ? member.permissions : [];
+      // Support multiple roles - get roles array or fallback to roleName
+      const memberRoles = Array.isArray(member.roles) && member.roles.length > 0 
+        ? member.roles 
+        : (member.roleName ? [member.roleName] : ['Guest']);
+      
+      req.memberRoles = memberRoles;
+      req.memberRole = memberRoles[0] || 'Guest'; // Primary role (for backward compatibility)
+      
+      // Aggregate permissions from all roles
+      const aggregatedPermissions = new Set();
+      
+      // Add permissions directly stored on member (if any)
+      if (Array.isArray(member.permissions)) {
+        member.permissions.forEach(perm => aggregatedPermissions.add(perm));
+      }
+      
+      // Get permissions from each role definition
+      const defaultRoles = Project.getDefaultRoles();
+      for (const roleName of memberRoles) {
+        const roleDef = defaultRoles.find(r => r.name === roleName);
+        if (roleDef && Array.isArray(roleDef.permissions)) {
+          roleDef.permissions.forEach(perm => aggregatedPermissions.add(perm));
+        }
+        
+        // Also check custom roles
+        if (project.customRoles) {
+          const customRole = project.customRoles.find(r => r.name === roleName);
+          if (customRole && Array.isArray(customRole.permissions)) {
+            customRole.permissions.forEach(perm => aggregatedPermissions.add(perm));
+          }
+        }
+      }
+      
+      req.memberPermissions = Array.from(aggregatedPermissions);
     } else {
       req.memberRole = 'Guest';
+      req.memberRoles = ['Guest'];
       req.memberPermissions = [];
     }
 

@@ -1,5 +1,6 @@
 import Project, { ALL_PERMISSIONS } from '../models/Project.js';
 import User from '../models/User.js';
+import Task from '../models/Task.js';
 import bcrypt from 'bcryptjs';
 import { sendSuccess, sendError } from '../utils/response.js';
 import logger from '../utils/logger.js';
@@ -72,6 +73,7 @@ function getRoleIndex(roleName, project) {
  * Get user's role index in a project (position-based hierarchy)
  * Returns index (0 = Owner = highest power, last = Guest = lowest power)
  * Returns -1 if user not found
+ * For multiple roles, returns the HIGHEST priority (lowest index) role
  */
 function getUserRoleIndex(project, userId) {
   // Owner always at index 0
@@ -79,20 +81,37 @@ function getUserRoleIndex(project, userId) {
     return 0;
   }
   
-  // Find member's role
+  // Find member's roles
   const member = project.members.find(m => m.userId.toString() === userId.toString());
-  if (!member || !member.roleName) {
+  if (!member) {
     // Guest or no role = last index (lowest power)
     const orderedRoles = getOrderedRoleList(project);
     return orderedRoles.length - 1; // Last index (Guest)
   }
   
-  return getRoleIndex(member.roleName, project);
+  // Support both roles array and legacy roleName
+  const memberRoles = Array.isArray(member.roles) && member.roles.length > 0 
+    ? member.roles 
+    : (member.roleName ? [member.roleName] : ['Guest']);
+  
+  // Find the highest priority role (lowest index = highest power)
+  const orderedRoles = getOrderedRoleList(project);
+  let highestPriorityIndex = orderedRoles.length - 1; // Default to Guest (lowest)
+  
+  for (const roleName of memberRoles) {
+    const roleIndex = getRoleIndex(roleName, project);
+    if (roleIndex !== -1 && roleIndex < highestPriorityIndex) {
+      highestPriorityIndex = roleIndex;
+    }
+  }
+  
+  return highestPriorityIndex;
 }
 
 /**
  * Get user's permissions in a project
  * Owner gets all permissions
+ * For multiple roles: Aggregates permissions from ALL roles (union/merge)
  */
 function getUserPermissions(project, userId) {
   // Owner always has all permissions
@@ -100,13 +119,39 @@ function getUserPermissions(project, userId) {
     return ALL_PERMISSIONS;
   }
   
-  // Find member's permissions
+  // Find member
   const member = project.members.find(m => m.userId.toString() === userId.toString());
-  if (!member || !Array.isArray(member.permissions)) {
+  if (!member) {
     return []; // No permissions
   }
   
-  return member.permissions;
+  // If permissions are directly stored (legacy or computed), use them
+  if (Array.isArray(member.permissions) && member.permissions.length > 0) {
+    return [...new Set(member.permissions)]; // Remove duplicates
+  }
+  
+  // Otherwise, aggregate permissions from all roles
+  const memberRoles = Array.isArray(member.roles) && member.roles.length > 0 
+    ? member.roles 
+    : (member.roleName ? [member.roleName] : ['Guest']);
+  
+  const aggregatedPermissions = new Set();
+  
+  // Get permissions from each role
+  for (const roleName of memberRoles) {
+    const rolePermissions = getRolePermissions(roleName);
+    rolePermissions.forEach(perm => aggregatedPermissions.add(perm));
+    
+    // Also check custom roles
+    if (project.customRoles) {
+      const customRole = project.customRoles.find(r => r.name === roleName);
+      if (customRole && Array.isArray(customRole.permissions)) {
+        customRole.permissions.forEach(perm => aggregatedPermissions.add(perm));
+      }
+    }
+  }
+  
+  return Array.from(aggregatedPermissions);
 }
 
 /**
@@ -395,21 +440,34 @@ export const getProjectDetails = async (req, res) => {
 };
 
 /**
- * Update member role
+ * Update member roles (supports multiple roles)
  * PUT /api/projects/:projectId/members/:memberId/role
  * 
- * Updates a specific member's role and permissions
+ * Updates a specific member's roles and aggregated permissions
  * Enforces hierarchy and privilege escalation prevention
+ * Accepts: { roles: string[] } or { roleName: string } (for backward compatibility)
  */
 export const updateMemberRole = async (req, res) => {
   try {
     const project = req.project;
     const { memberId } = req.params;
-    const { roleName, permissions } = req.body;
+    const { roles, roleName, permissions } = req.body; // Support both roles array and legacy roleName
     const userId = req.dbUser._id;
 
-    if (!roleName) {
-      return sendError(res, 'Role name is required', 400);
+    // Determine roles array - support both new format (roles) and legacy (roleName)
+    let rolesArray = [];
+    if (Array.isArray(roles) && roles.length > 0) {
+      rolesArray = roles;
+    } else if (roleName) {
+      // Backward compatibility: convert single roleName to array
+      rolesArray = [roleName];
+    } else {
+      return sendError(res, 'Roles array or role name is required', 400);
+    }
+
+    // Validate roles array
+    if (rolesArray.length === 0) {
+      return sendError(res, 'At least one role is required', 400);
     }
 
     // Find the member
@@ -430,62 +488,92 @@ export const updateMemberRole = async (req, res) => {
       return sendError(res, 'Cannot change project owner\'s role. The Owner role is protected.', 403);
     }
 
-    // === HIERARCHY CHECK: Requester can only assign roles below them ===
-    if (!canModifyRole(project, userId, roleName)) {
-      const requesterIndex = getUserRoleIndex(project, userId);
-      const targetIndex = getRoleIndex(roleName, project);
-      logger.warn(`Hierarchy violation: User ${userId} (index ${requesterIndex}) attempted to assign role ${roleName} (index ${targetIndex})`);
-      return sendError(res, `Access denied: You cannot assign the "${roleName}" role. You can only assign roles below your own in the hierarchy.`, 403);
-    }
-
-    // === HIERARCHY CHECK: Requester can only modify members with roles below them ===
-    const targetMemberCurrentRole = targetMember.roleName || 'Guest';
-    if (!canModifyRole(project, userId, targetMemberCurrentRole)) {
-      const requesterIndex = getUserRoleIndex(project, userId);
-      const targetMemberIndex = getRoleIndex(targetMemberCurrentRole, project);
-      logger.warn(`Hierarchy violation: User ${userId} (index ${requesterIndex}) attempted to modify member with role ${targetMemberCurrentRole} (index ${targetMemberIndex})`);
-      return sendError(res, `Access denied: You cannot modify members with the "${targetMemberCurrentRole}" role. You can only modify members with roles below your own in the hierarchy.`, 403);
-    }
-
     // === OWNER PROTECTION: Cannot assign Owner role ===
-    if (roleName === 'Owner') {
+    if (rolesArray.includes('Owner')) {
       logger.warn(`User ${userId} attempted to assign Owner role in project ${project._id}`);
       return sendError(res, 'Cannot assign Owner role. The Owner role is protected and cannot be assigned.', 403);
     }
 
-    // Get permissions for the role (use provided permissions or default)
-    let rolePermissions = Array.isArray(permissions) 
-      ? permissions 
-      : getRolePermissions(roleName);
+    // === HIERARCHY CHECK: Requester can only assign roles below them ===
+    for (const roleNameToCheck of rolesArray) {
+      if (!canModifyRole(project, userId, roleNameToCheck)) {
+        const requesterIndex = getUserRoleIndex(project, userId);
+        const targetIndex = getRoleIndex(roleNameToCheck, project);
+        logger.warn(`Hierarchy violation: User ${userId} (index ${requesterIndex}) attempted to assign role ${roleNameToCheck} (index ${targetIndex})`);
+        return sendError(res, `Access denied: You cannot assign the "${roleNameToCheck}" role. You can only assign roles below your own in the hierarchy.`, 403);
+      }
+    }
+
+    // === HIERARCHY CHECK: Requester can only modify members with roles below them ===
+    const targetMemberCurrentRoles = Array.isArray(targetMember.roles) && targetMember.roles.length > 0
+      ? targetMember.roles
+      : (targetMember.roleName ? [targetMember.roleName] : ['Guest']);
+    
+    // Check if requester can modify any of the member's current roles
+    let canModify = false;
+    for (const currentRole of targetMemberCurrentRoles) {
+      if (canModifyRole(project, userId, currentRole)) {
+        canModify = true;
+        break;
+      }
+    }
+    
+    if (!canModify) {
+      const requesterIndex = getUserRoleIndex(project, userId);
+      logger.warn(`Hierarchy violation: User ${userId} (index ${requesterIndex}) attempted to modify member with roles ${targetMemberCurrentRoles.join(', ')}`);
+      return sendError(res, `Access denied: You cannot modify members with these roles. You can only modify members with roles below your own in the hierarchy.`, 403);
+    }
+
+    // Aggregate permissions from all roles
+    const aggregatedPermissions = new Set();
+    
+    for (const roleNameToAggregate of rolesArray) {
+      const rolePerms = getRolePermissions(roleNameToAggregate);
+      rolePerms.forEach(perm => aggregatedPermissions.add(perm));
+      
+      // Also check custom roles
+      if (project.customRoles) {
+        const customRole = project.customRoles.find(r => r.name === roleNameToAggregate);
+        if (customRole && Array.isArray(customRole.permissions)) {
+          customRole.permissions.forEach(perm => aggregatedPermissions.add(perm));
+        }
+      }
+    }
+
+    // If permissions are explicitly provided, merge them (but still aggregate from roles)
+    if (Array.isArray(permissions) && permissions.length > 0) {
+      permissions.forEach(perm => aggregatedPermissions.add(perm));
+    }
+
+    const finalPermissions = Array.from(aggregatedPermissions);
 
     // === PRIVILEGE ESCALATION CHECK: User cannot grant permissions they don't have ===
     const userPermissions = getUserPermissions(project, userId);
-    if (!hasPermissionToGrant(userPermissions, rolePermissions)) {
-      const missingPermissions = rolePermissions.filter(p => !userPermissions.includes(p));
+    if (!hasPermissionToGrant(userPermissions, finalPermissions)) {
+      const missingPermissions = finalPermissions.filter(p => !userPermissions.includes(p));
       logger.warn(`Privilege escalation attempt: User ${userId} tried to assign permissions they don't have: ${missingPermissions.join(', ')}`);
       return sendError(res, `Access denied: You cannot assign permissions that you do not possess yourself. Missing permissions: ${missingPermissions.join(', ')}`, 403);
     }
 
     // === VALIDATE THAT ALL PERMISSIONS ARE VALID ===
-    const invalidPermissions = rolePermissions.filter(p => !ALL_PERMISSIONS.includes(p));
+    const invalidPermissions = finalPermissions.filter(p => !ALL_PERMISSIONS.includes(p));
     if (invalidPermissions.length > 0) {
       return sendError(res, `Invalid permissions: ${invalidPermissions.join(', ')}`, 400);
     }
 
-    // Update member's role (inline)
-    project.members[memberIndex].roleName = roleName;
-    project.members[memberIndex].permissions = rolePermissions;
+    // Update member's roles and permissions
+    project.members[memberIndex].roles = rolesArray;
+    project.members[memberIndex].roleName = rolesArray[0]; // Keep for backward compatibility
+    project.members[memberIndex].permissions = finalPermissions;
     await project.save();
 
-    logger.info(`Member role updated: User ${userId} updated member ${targetMemberUserId} to role ${roleName} in project ${project._id}`);
+    logger.info(`Member roles updated: User ${userId} updated member ${targetMemberUserId} to roles [${rolesArray.join(', ')}] in project ${project._id}`);
 
     sendSuccess(res, {
-      message: 'Member role updated successfully',
+      message: 'Member roles updated successfully',
       member: project.members[memberIndex],
-      newRole: {
-        name: roleName,
-        permissions: rolePermissions,
-      },
+      newRoles: rolesArray,
+      aggregatedPermissions: finalPermissions,
     });
   } catch (error) {
     logger.error(`Update Member Role Error: ${error.message}`, { error });
@@ -516,6 +604,13 @@ export const joinProject = async (req, res) => {
       return sendError(res, 'Invalid password', 403);
     }
 
+    // Check if user is banned
+    const isBanned = project.bannedUsers?.some(b => b.userId.toString() === userId.toString());
+    if (isBanned) {
+      const bannedInfo = project.bannedUsers.find(b => b.userId.toString() === userId.toString());
+      return sendError(res, `You have been banned from this project. Reason: ${bannedInfo?.reason || 'Not specified'}`, 403);
+    }
+
     // Check if already a member
     const isMember = project.members.some(m => m.userId.toString() === userId.toString());
     if (isMember) {
@@ -525,7 +620,8 @@ export const joinProject = async (req, res) => {
     // Add user as member with Guest role (zero permissions - inline)
     project.members.push({
       userId,
-      roleName: 'Guest',
+      roles: ['Guest'], // Multiple roles support
+      roleName: 'Guest', // Backward compatibility
       permissions: [], // Zero permissions for new members
       joinedAt: new Date(),
     });
@@ -750,9 +846,36 @@ export const updateRolePermissions = async (req, res) => {
     // === UPDATE ALL MEMBERS WITH THIS ROLE ===
     let updatedCount = 0;
     project.members.forEach((member, index) => {
-      if (member.roleName === roleName && member.userId.toString() !== project.ownerId.toString()) {
+      // Check both roles array and legacy roleName
+      const memberRoles = Array.isArray(member.roles) && member.roles.length > 0 
+        ? member.roles 
+        : (member.roleName ? [member.roleName] : []);
+      
+      if (memberRoles.includes(roleName) && member.userId.toString() !== project.ownerId.toString()) {
         // Don't update owner's permissions even if they somehow have a different roleName
-        project.members[index].permissions = [...permissions];
+        // Recalculate aggregated permissions for this member (from all their roles)
+        const aggregatedPermissions = new Set();
+        
+        for (const memberRoleName of memberRoles) {
+          // If this is the role being updated, use the new permissions
+          if (memberRoleName === roleName) {
+            permissions.forEach(perm => aggregatedPermissions.add(perm));
+          } else {
+            // Otherwise, get permissions from role definition
+            const rolePerms = getRolePermissions(memberRoleName);
+            rolePerms.forEach(perm => aggregatedPermissions.add(perm));
+            
+            // Also check custom roles
+            if (project.customRoles) {
+              const customRole = project.customRoles.find(r => r.name === memberRoleName);
+              if (customRole && Array.isArray(customRole.permissions)) {
+                customRole.permissions.forEach(perm => aggregatedPermissions.add(perm));
+              }
+            }
+          }
+        }
+        
+        project.members[index].permissions = Array.from(aggregatedPermissions);
         updatedCount++;
       }
     });
@@ -1032,8 +1155,13 @@ export const deleteProjectRole = async (req, res) => {
       return sendError(res, 'Role not found', 404);
     }
 
-    // Check if role is currently assigned to any members
-    const membersWithRole = project.members.filter(m => m.roleName === roleName);
+    // Check if role is currently assigned to any members (check both roles array and legacy roleName)
+    const membersWithRole = project.members.filter(m => {
+      const memberRoles = Array.isArray(m.roles) && m.roles.length > 0 
+        ? m.roles 
+        : (m.roleName ? [m.roleName] : []);
+      return memberRoles.includes(roleName);
+    });
     if (membersWithRole.length > 0) {
       return sendError(res, `Cannot delete role "${roleName}" because it is currently assigned to ${membersWithRole.length} member(s). Please reassign members before deleting the role.`, 400);
     }
@@ -1081,5 +1209,210 @@ export const deleteProject = async (req, res) => {
   }
 };
 
+/**
+ * Get project members with active task counts
+ * GET /api/projects/:projectId/members
+ */
+export const getProjectMembers = async (req, res) => {
+  try {
+    const project = req.project;
+    
+    // Get all members with populated user data
+    const memberIds = project.members.map(m => m.userId);
+    const users = await User.find({ _id: { $in: memberIds } })
+      .select('_id uid email displayName avatar')
+      .lean();
+
+    // Get active task counts for each member
+    const activeTaskCounts = {};
+    for (const member of project.members) {
+      const count = await Task.countDocuments({
+        projectId: project._id,
+        assignees: member.userId,
+        status: { $ne: 'Done' },
+      });
+      activeTaskCounts[member.userId.toString()] = count;
+    }
+
+    // Format members with user data and stats
+    const membersWithStats = project.members.map(member => {
+      const user = users.find(u => u._id.toString() === member.userId.toString());
+      const isOwner = member.userId.toString() === project.ownerId.toString();
+      
+      // Support both roles array and legacy roleName
+      const memberRoles = Array.isArray(member.roles) && member.roles.length > 0 
+        ? member.roles 
+        : (member.roleName ? [member.roleName] : ['Guest']);
+      
+      return {
+        _id: member._id,
+        userId: member.userId,
+        uid: user?.uid || '',
+        email: user?.email || '',
+        displayName: user?.displayName || user?.email?.split('@')[0] || 'Unknown',
+        avatar: user?.avatar || '',
+        roleName: memberRoles[0] || 'Guest', // Primary role for backward compatibility
+        roles: memberRoles, // Multiple roles support
+        permissions: member.permissions || [],
+        hourlyRate: member.hourlyRate || 0,
+        joinedAt: member.joinedAt || new Date(),
+        activeTaskCount: activeTaskCounts[member.userId.toString()] || 0,
+        isOwner,
+      };
+    });
+
+    sendSuccess(res, {
+      members: membersWithStats,
+    });
+  } catch (error) {
+    logger.error(`Get Project Members Error: ${error.message}`, { error });
+    sendError(res, 'Failed to fetch project members', 500);
+  }
+};
+
+/**
+ * Block a user from the project
+ * POST /api/projects/:projectId/members/block
+ */
+export const blockMember = async (req, res) => {
+  try {
+    const project = req.project;
+    const { userId, reason } = req.body;
+    const bannedBy = req.dbUser._id;
+
+    if (!userId) {
+      return sendError(res, 'User ID is required', 400);
+    }
+
+    if (!reason || typeof reason !== 'string' || reason.trim().length === 0) {
+      return sendError(res, 'Block reason is required', 400);
+    }
+
+    // Cannot block owner
+    if (userId.toString() === project.ownerId.toString()) {
+      return sendError(res, 'Cannot block the project owner', 403);
+    }
+
+    // Find member
+    const memberIndex = project.members.findIndex(m => m.userId.toString() === userId.toString());
+    if (memberIndex === -1) {
+      return sendError(res, 'User is not a member of this project', 404);
+    }
+
+    const member = project.members[memberIndex];
+    
+    // Get user email before removing
+    const user = await User.findById(userId).select('email').lean();
+    const userEmail = user?.email || '';
+
+    // Check if already banned
+    const alreadyBanned = project.bannedUsers?.some(b => b.userId.toString() === userId.toString());
+    if (alreadyBanned) {
+      return sendError(res, 'User is already banned from this project', 400);
+    }
+
+    // Initialize bannedUsers array if it doesn't exist
+    if (!project.bannedUsers) {
+      project.bannedUsers = [];
+    }
+
+    // Remove from members
+    project.members.splice(memberIndex, 1);
+
+    // Remove from all departments
+    if (project.departments && project.departments.length > 0) {
+      project.departments.forEach(dept => {
+        if (dept.memberIds) {
+          const memberIdIndex = dept.memberIds.findIndex(id => id.toString() === userId.toString());
+          if (memberIdIndex !== -1) {
+            dept.memberIds.splice(memberIdIndex, 1);
+          }
+        }
+      });
+    }
+
+    // Add to banned users
+    project.bannedUsers.push({
+      userId: userId,
+      email: userEmail,
+      reason: reason.trim(),
+      bannedAt: new Date(),
+      bannedBy: bannedBy,
+    });
+
+    await project.save();
+
+    logger.info(`Member blocked: User ${bannedBy} blocked user ${userId} from project ${project._id}`);
+
+    sendSuccess(res, {
+      message: 'User blocked successfully',
+    });
+  } catch (error) {
+    logger.error(`Block Member Error: ${error.message}`, { error });
+    sendError(res, 'Failed to block user', 500);
+  }
+};
+
+/**
+ * Unblock a user from the project
+ * POST /api/projects/:projectId/members/unblock
+ */
+export const unblockMember = async (req, res) => {
+  try {
+    const project = req.project;
+    const { userId } = req.body;
+    const unblockedBy = req.dbUser._id;
+
+    if (!userId) {
+      return sendError(res, 'User ID is required', 400);
+    }
+
+    // Find in banned users
+    const bannedIndex = project.bannedUsers?.findIndex(b => b.userId.toString() === userId.toString());
+    if (bannedIndex === -1 || bannedIndex === undefined) {
+      return sendError(res, 'User is not banned from this project', 404);
+    }
+
+    // Remove from banned users
+    const bannedUser = project.bannedUsers[bannedIndex];
+    project.bannedUsers.splice(bannedIndex, 1);
+
+    await project.save();
+
+    logger.info(`Member unblocked: User ${unblockedBy} unblocked user ${userId} from project ${project._id}`);
+
+    sendSuccess(res, {
+      message: 'User unblocked successfully',
+    });
+  } catch (error) {
+    logger.error(`Unblock Member Error: ${error.message}`, { error });
+    sendError(res, 'Failed to unblock user', 500);
+  }
+};
+
+/**
+ * Get banned users for the project
+ * GET /api/projects/:projectId/members/banned
+ */
+export const getBannedUsers = async (req, res) => {
+  try {
+    const project = req.project;
+    
+    const bannedUsers = (project.bannedUsers || []).map(banned => ({
+      userId: banned.userId,
+      email: banned.email,
+      reason: banned.reason,
+      bannedAt: banned.bannedAt,
+      bannedBy: banned.bannedBy,
+    }));
+
+    sendSuccess(res, {
+      bannedUsers,
+    });
+  } catch (error) {
+    logger.error(`Get Banned Users Error: ${error.message}`, { error });
+    sendError(res, 'Failed to fetch banned users', 500);
+  }
+};
 
 

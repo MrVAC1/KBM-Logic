@@ -48,12 +48,16 @@ const memberSchema = new mongoose.Schema({
     ref: 'User',
     required: true,
   },
-  // Inline role data - supports both default and custom roles
-  roleName: {
+  // Multiple roles support - array of role names
+  roles: [{
     type: String,
     required: true,
     // Removed enum restriction to allow custom role names
-    default: 'Guest',
+  }],
+  // Legacy field for backward compatibility (will be populated from roles array)
+  roleName: {
+    type: String,
+    // No longer required, will be computed from roles[0] if exists
   },
   permissions: [{
     type: String,
@@ -68,6 +72,24 @@ const memberSchema = new mongoose.Schema({
     default: Date.now,
   },
 }, { _id: true });
+
+// Pre-save hook to maintain backward compatibility
+memberSchema.pre('save', function(next) {
+  // If roles array exists and has items, set roleName to first role for backward compatibility
+  if (this.roles && this.roles.length > 0 && !this.roleName) {
+    this.roleName = this.roles[0];
+  }
+  // If roles is empty but roleName exists, migrate to roles array
+  if ((!this.roles || this.roles.length === 0) && this.roleName) {
+    this.roles = [this.roleName];
+  }
+  // Default to Guest if no roles
+  if (!this.roles || this.roles.length === 0) {
+    this.roles = ['Guest'];
+    this.roleName = 'Guest';
+  }
+  next();
+});
 
 const projectSchema = new mongoose.Schema({
   name: {
@@ -117,6 +139,52 @@ const projectSchema = new mongoose.Schema({
     },
   }],
   members: [memberSchema],
+  // Departments array for organizational groups
+  departments: [{
+    _id: {
+      type: mongoose.Schema.Types.ObjectId,
+      auto: true,
+    },
+    name: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    memberIds: [{
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+    }],
+    createdAt: {
+      type: Date,
+      default: Date.now,
+    },
+  }],
+  // Banned users array
+  bannedUsers: [{
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+    },
+    email: {
+      type: String,
+      required: true,
+    },
+    reason: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    bannedAt: {
+      type: Date,
+      default: Date.now,
+    },
+    bannedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+    },
+  }],
   inviteCode: {
     type: String,
     unique: true,
