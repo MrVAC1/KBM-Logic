@@ -48,11 +48,11 @@ const memberSchema = new mongoose.Schema({
     ref: 'User',
     required: true,
   },
-  // Inline role data - no need for separate roles array
+  // Inline role data - supports both default and custom roles
   roleName: {
     type: String,
     required: true,
-    enum: ['Owner', 'Admin', 'PM', 'Developer', 'Guest'],
+    // Removed enum restriction to allow custom role names
     default: 'Guest',
   },
   permissions: [{
@@ -91,7 +91,31 @@ const projectSchema = new mongoose.Schema({
     index: true,
   },
   fixedCosts: [fixedCostSchema],
-  // Removed roles array - role data is now inline in members
+  // Custom roles defined by project owner/admin
+  customRoles: [{
+    name: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    color: {
+      type: String,
+      required: true,
+      default: '#6b7280',
+    },
+    hierarchy: {
+      type: Number,
+      default: 200, // Higher than default roles (Guest = 100)
+    },
+    permissions: [{
+      type: String,
+      enum: ALL_PERMISSIONS,
+    }],
+    createdAt: {
+      type: Date,
+      default: Date.now,
+    },
+  }],
   members: [memberSchema],
   inviteCode: {
     type: String,
@@ -108,6 +132,8 @@ const projectSchema = new mongoose.Schema({
 });
 
 // Default roles for new projects
+// Simplified: Only Owner and Guest roles are created by default
+// All other roles must be created manually by users
 projectSchema.statics.getDefaultRoles = function() {
   return [
     {
@@ -118,43 +144,11 @@ projectSchema.statics.getDefaultRoles = function() {
       permissions: ALL_PERMISSIONS,
     },
     {
-      name: 'Admin',
-      color: '#f97316',
-      hierarchy: 10,
-      isDefault: false,
-      permissions: [
-        'can_view_dashboard', 'can_view_tasks', 'can_view_risks', 'can_view_financial',
-        'can_track_time', 'can_create_tasks', 'can_edit_tasks', 'can_delete_tasks',
-        'can_edit_budget', 'can_manage_roles', 'can_invite_users', 'can_manage_settings',
-      ],
-    },
-    {
-      name: 'PM',
-      color: '#eab308',
-      hierarchy: 20,
-      isDefault: false,
-      permissions: [
-        'can_view_dashboard', 'can_view_tasks', 'can_view_risks', 'can_view_financial',
-        'can_track_time', 'can_create_tasks', 'can_edit_tasks',
-        'can_invite_users',
-      ],
-    },
-    {
-      name: 'Developer',
-      color: '#22c55e',
-      hierarchy: 30,
-      isDefault: false,
-      permissions: [
-        'can_view_tasks', 'can_view_risks',
-        'can_track_time', 'can_create_tasks', 'can_edit_tasks',
-      ],
-    },
-    {
       name: 'Guest',
       color: '#6b7280',
-      hierarchy: 100,
+      hierarchy: 99,
       isDefault: true,
-      permissions: [], // Zero permissions - must be granted by Owner/Admin
+      permissions: [], // Zero permissions - must be granted by Owner
     },
   ];
 };

@@ -33,12 +33,26 @@ function getRolePermissions(roleName) {
 
 /**
  * Get role hierarchy value by role name
- * Lower number = higher hierarchy (Owner = 0, Guest = 100)
+ * Lower number = higher hierarchy (Owner = 0, Guest = 99)
+ * Checks both default roles and custom roles
  */
-function getRoleHierarchy(roleName) {
+function getRoleHierarchy(roleName, project = null) {
+  // First check default roles
   const defaultRoles = Project.getDefaultRoles();
-  const roleDef = defaultRoles.find(r => r.name === roleName);
-  return roleDef ? roleDef.hierarchy : 100; // Default to lowest hierarchy
+  const defaultRoleDef = defaultRoles.find(r => r.name === roleName);
+  if (defaultRoleDef) {
+    return defaultRoleDef.hierarchy;
+  }
+  
+  // Then check custom roles if project is provided
+  if (project && project.customRoles) {
+    const customRole = project.customRoles.find(r => r.name === roleName);
+    if (customRole) {
+      return customRole.hierarchy || 200; // Custom roles default to 200
+    }
+  }
+  
+  return 200; // Default to lowest hierarchy for unknown roles
 }
 
 /**
@@ -58,7 +72,7 @@ function getUserRoleHierarchy(project, userId) {
     return 100; // Guest or no role = lowest hierarchy
   }
   
-  return getRoleHierarchy(member.roleName);
+  return getRoleHierarchy(member.roleName, project);
 }
 
 /**
@@ -86,9 +100,10 @@ function getUserPermissions(project, userId) {
  */
 function canModifyRole(project, requesterUserId, targetRoleName) {
   const requesterHierarchy = getUserRoleHierarchy(project, requesterUserId);
-  const targetHierarchy = getRoleHierarchy(targetRoleName);
+  const targetHierarchy = getRoleHierarchy(targetRoleName, project);
   
   // Requester must have lower hierarchy number (higher priority) than target
+  // Cannot modify roles at same or higher hierarchy level (stricter rule)
   return requesterHierarchy < targetHierarchy;
 }
 
@@ -395,7 +410,7 @@ export const updateMemberRole = async (req, res) => {
     // === HIERARCHY CHECK: Requester can only assign roles below them ===
     if (!canModifyRole(project, userId, roleName)) {
       const requesterHierarchy = getUserRoleHierarchy(project, userId);
-      const targetHierarchy = getRoleHierarchy(roleName);
+      const targetHierarchy = getRoleHierarchy(roleName, project);
       logger.warn(`Hierarchy violation: User ${userId} (hierarchy ${requesterHierarchy}) attempted to assign role ${roleName} (hierarchy ${targetHierarchy})`);
       return sendError(res, `Access denied: You cannot assign the "${roleName}" role. You can only assign roles below your own in the hierarchy.`, 403);
     }
@@ -404,7 +419,7 @@ export const updateMemberRole = async (req, res) => {
     const targetMemberCurrentRole = targetMember.roleName || 'Guest';
     if (!canModifyRole(project, userId, targetMemberCurrentRole)) {
       const requesterHierarchy = getUserRoleHierarchy(project, userId);
-      const targetMemberHierarchy = getRoleHierarchy(targetMemberCurrentRole);
+      const targetMemberHierarchy = getRoleHierarchy(targetMemberCurrentRole, project);
       logger.warn(`Hierarchy violation: User ${userId} (hierarchy ${requesterHierarchy}) attempted to modify member with role ${targetMemberCurrentRole} (hierarchy ${targetMemberHierarchy})`);
       return sendError(res, `Access denied: You cannot modify members with the "${targetMemberCurrentRole}" role. You can only modify members with roles below your own in the hierarchy.`, 403);
     }
@@ -579,15 +594,55 @@ export const getProjectRoles = async (req, res) => {
       });
     }
     
+    // Add custom roles that may not be assigned yet
+    if (project.customRoles && project.customRoles.length > 0) {
+      project.customRoles.forEach(customRole => {
+        const existsInRoles = allRoles.some(r => r.name === customRole.name);
+        if (!existsInRoles) {
+          allRoles.push({
+            name: customRole.name,
+            permissions: Array.isArray(customRole.permissions) ? customRole.permissions : [],
+          });
+        }
+      });
+    }
+    
     // Merge with default role info (hierarchy, color)
     const rolesWithMetadata = allRoles.map(role => {
+      // First check if it's a default role
       const defaultRole = defaultRoles.find(r => r.name === role.name);
+      if (defaultRole) {
+        return {
+          name: role.name,
+          permissions: role.permissions || (role.name === 'Owner' ? ALL_PERMISSIONS : []),
+          hierarchy: defaultRole.hierarchy,
+          color: defaultRole.color,
+          isOwner: role.name === 'Owner',
+          isDefault: true,
+        };
+      }
+      
+      // Then check if it's a custom role
+      const customRole = project.customRoles?.find(r => r.name === role.name);
+      if (customRole) {
+        return {
+          name: role.name,
+          permissions: role.permissions || (Array.isArray(customRole.permissions) ? customRole.permissions : []),
+          hierarchy: customRole.hierarchy || 200,
+          color: customRole.color || '#6b7280',
+          isOwner: false,
+          isDefault: false,
+        };
+      }
+      
+      // Fallback
       return {
         name: role.name,
-        permissions: role.permissions || (role.name === 'Owner' ? ALL_PERMISSIONS : []),
-        hierarchy: defaultRole?.hierarchy || 100,
-        color: defaultRole?.color || '#6b7280',
+        permissions: role.permissions || [],
+        hierarchy: 200,
+        color: '#6b7280',
         isOwner: role.name === 'Owner',
+        isDefault: false,
       };
     });
 
@@ -626,7 +681,7 @@ export const updateRolePermissions = async (req, res) => {
     // === HIERARCHY CHECK: Requester can only modify roles below them ===
     if (!canModifyRole(project, userId, roleName)) {
       const requesterHierarchy = getUserRoleHierarchy(project, userId);
-      const targetHierarchy = getRoleHierarchy(roleName);
+      const targetHierarchy = getRoleHierarchy(roleName, project);
       logger.warn(`Hierarchy violation: User ${userId} (hierarchy ${requesterHierarchy}) attempted to modify role ${roleName} (hierarchy ${targetHierarchy})`);
       return sendError(res, `Access denied: You cannot modify the "${roleName}" role. You can only modify roles below your own in the hierarchy.`, 403);
     }
@@ -640,6 +695,14 @@ export const updateRolePermissions = async (req, res) => {
     const invalidPermissions = permissions.filter(p => !ALL_PERMISSIONS.includes(p));
     if (invalidPermissions.length > 0) {
       return sendError(res, `Invalid permissions: ${invalidPermissions.join(', ')}`, 400);
+    }
+
+    // === HARD LIMIT: can_delete_project is ONLY for Owner role ===
+    if (roleName !== 'Owner' && permissions.includes('can_delete_project')) {
+      logger.warn(`Security violation: User ${userId} attempted to assign can_delete_project to role ${roleName}`);
+      // Remove can_delete_project from permissions array
+      permissions = permissions.filter(p => p !== 'can_delete_project');
+      logger.info(`Removed can_delete_project from ${roleName} role permissions`);
     }
 
     // === PRIVILEGE ESCALATION CHECK: User cannot grant permissions they don't have ===
@@ -739,7 +802,7 @@ export const updateRoleOrder = async (req, res) => {
       
       // Check each role after requester's position
       for (const roleName of rolesAfterRequester) {
-        const roleHierarchy = getRoleHierarchy(roleName);
+        const roleHierarchy = getRoleHierarchy(roleName, project);
         
         // If this role has a lower hierarchy number (higher priority) than requester,
         // it means requester is trying to place themselves above a higher-priority role
@@ -761,7 +824,7 @@ export const updateRoleOrder = async (req, res) => {
         .map(r => r.name);
       
       for (const roleNameBefore of rolesBeforeRequester) {
-        const roleBeforeHierarchy = getRoleHierarchy(roleNameBefore);
+        const roleBeforeHierarchy = getRoleHierarchy(roleNameBefore, project);
         
         // If this role has higher priority (lower hierarchy) than requester,
         // it's fine if it's before requester - that's expected
@@ -778,8 +841,8 @@ export const updateRoleOrder = async (req, res) => {
       
       if (currentRole === 'Owner' || nextRole === 'Owner') continue;
       
-      const currentHierarchy = getRoleHierarchy(currentRole);
-      const nextHierarchy = getRoleHierarchy(nextRole);
+      const currentHierarchy = getRoleHierarchy(currentRole, project);
+      const nextHierarchy = getRoleHierarchy(nextRole, project);
       
       // If a lower-priority role (higher hierarchy number) is placed above a higher-priority role,
       // check if requester has permission to do this
@@ -830,6 +893,171 @@ export const updateRoleOrder = async (req, res) => {
   } catch (error) {
     logger.error(`Update Role Order Error: ${error.message}`, { error });
     sendError(res, 'Failed to update role order', 500);
+  }
+};
+
+/**
+ * Create a new custom role
+ * POST /api/projects/:projectId/roles
+ * 
+ * Creates a custom role with the specified name and color
+ * New role starts with zero permissions and lowest hierarchy
+ */
+export const createProjectRole = async (req, res) => {
+  try {
+    const project = req.project;
+    const { name, color } = req.body;
+    const userId = req.dbUser._id;
+    
+    // Permission check is handled by requirePermission('can_manage_roles') middleware
+
+    // Validate inputs
+    if (!name || typeof name !== 'string' || name.trim().length === 0) {
+      return sendError(res, 'Role name is required', 400);
+    }
+
+    const roleName = name.trim();
+
+    // Validate role name doesn't conflict with default roles
+    const defaultRoles = Project.getDefaultRoles();
+    const defaultRoleNames = defaultRoles.map(r => r.name);
+    if (defaultRoleNames.includes(roleName)) {
+      return sendError(res, `Role name "${roleName}" is reserved for a default role. Please choose a different name.`, 400);
+    }
+
+    // Validate role name doesn't already exist as custom role
+    const existingCustomRole = project.customRoles?.find(r => r.name === roleName);
+    if (existingCustomRole) {
+      return sendError(res, `A role with the name "${roleName}" already exists`, 400);
+    }
+
+    // === HIERARCHY CHECK: User can only create roles they can manage ===
+    // Note: Creating a role doesn't immediately assign hierarchy, but we should ensure
+    // the user has can_manage_roles permission (already checked by middleware)
+    
+    // Validate color
+    const validColors = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#a855f7', '#6b7280'];
+    const selectedColor = color && validColors.includes(color) ? color : '#6b7280';
+
+    // Get current highest hierarchy (lowest number = highest priority)
+    // Find the highest hierarchy among all roles
+    const allRoles = [...defaultRoles];
+    if (project.customRoles && project.customRoles.length > 0) {
+      project.customRoles.forEach(cr => {
+        allRoles.push({
+          name: cr.name,
+          hierarchy: cr.hierarchy || 200,
+        });
+      });
+    }
+
+    // New custom role gets the lowest priority (highest hierarchy number)
+    // Start from Guest hierarchy (99) if no custom roles exist
+    const maxHierarchy = Math.max(...allRoles.map(r => r.hierarchy || 200), 99);
+    const newHierarchy = maxHierarchy + 10; // Place at bottom
+
+    // Create new custom role
+    const newRole = {
+      name: roleName,
+      color: selectedColor,
+      hierarchy: newHierarchy,
+      permissions: [], // Start with zero permissions
+      createdAt: new Date(),
+    };
+
+    // Initialize customRoles array if it doesn't exist
+    if (!project.customRoles) {
+      project.customRoles = [];
+    }
+
+    project.customRoles.push(newRole);
+    await project.save();
+
+    logger.info(`Custom role created: User ${userId} created role "${roleName}" in project ${project._id}`);
+
+    sendSuccess(res, {
+      message: 'Role created successfully',
+      role: newRole,
+    }, 201);
+  } catch (error) {
+    logger.error(`Create Role Error: ${error.message}`, { error });
+    sendError(res, 'Failed to create role', 500);
+  }
+};
+
+/**
+ * Delete a custom role
+ * DELETE /api/projects/:projectId/roles/:roleName
+ * 
+ * Removes a custom role from the project
+ * Cannot delete default roles or roles currently assigned to members
+ */
+export const deleteProjectRole = async (req, res) => {
+  try {
+    const project = req.project;
+    const { roleName } = req.params;
+    const userId = req.dbUser._id;
+    
+    // Permission check is handled by requirePermission('can_manage_roles') middleware
+
+    // Cannot delete Owner role
+    if (roleName === 'Owner') {
+      return sendError(res, 'Cannot delete the Owner role. The Owner role is protected.', 403);
+    }
+
+    // Cannot delete Guest role (protected system role)
+    if (roleName === 'Guest') {
+      return sendError(res, 'Cannot delete the Guest role. The Guest role is a protected system role.', 403);
+    }
+
+    // Cannot delete default roles
+    const defaultRoles = Project.getDefaultRoles();
+    const defaultRoleNames = defaultRoles.map(r => r.name);
+    if (defaultRoleNames.includes(roleName)) {
+      return sendError(res, `Cannot delete default role "${roleName}". Default roles cannot be removed.`, 403);
+    }
+
+    // === HIERARCHY CHECK: User can only delete roles below them ===
+    if (!canModifyRole(project, userId, roleName)) {
+      const requesterHierarchy = getUserRoleHierarchy(project, userId);
+      const targetHierarchy = getRoleHierarchy(roleName, project);
+      logger.warn(`Hierarchy violation: User ${userId} (hierarchy ${requesterHierarchy}) attempted to delete role ${roleName} (hierarchy ${targetHierarchy})`);
+      return sendError(res, `Access denied: You cannot delete the "${roleName}" role. You can only delete roles below your own in the hierarchy.`, 403);
+    }
+
+    // Check if role exists as custom role
+    if (!project.customRoles || project.customRoles.length === 0) {
+      return sendError(res, 'Role not found', 404);
+    }
+
+    const roleIndex = project.customRoles.findIndex(r => r.name === roleName);
+    if (roleIndex === -1) {
+      return sendError(res, 'Role not found', 404);
+    }
+
+    // Check if role is currently assigned to any members
+    const membersWithRole = project.members.filter(m => m.roleName === roleName);
+    if (membersWithRole.length > 0) {
+      return sendError(res, `Cannot delete role "${roleName}" because it is currently assigned to ${membersWithRole.length} member(s). Please reassign members before deleting the role.`, 400);
+    }
+
+    // Remove the custom role
+    const deletedRole = project.customRoles[roleIndex];
+    project.customRoles.splice(roleIndex, 1);
+    await project.save();
+
+    logger.info(`Custom role deleted: User ${userId} deleted role "${roleName}" from project ${project._id}`);
+
+    sendSuccess(res, {
+      message: 'Role deleted successfully',
+      deletedRole: {
+        name: deletedRole.name,
+        color: deletedRole.color,
+      },
+    });
+  } catch (error) {
+    logger.error(`Delete Role Error: ${error.message}`, { error });
+    sendError(res, 'Failed to delete role', 500);
   }
 };
 

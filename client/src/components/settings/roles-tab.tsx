@@ -23,7 +23,9 @@ import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { Shield, Lock, ChevronDown, ChevronUp, GripVertical } from "lucide-react"
+import { Shield, Lock, ChevronDown, ChevronUp, GripVertical, Trash2, Plus } from "lucide-react"
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
+import { CreateRoleModal } from "./create-role-modal"
 import { projects as projectsAPI } from "@/services/api"
 import { useProject } from "@/contexts/ProjectContext"
 import { toast } from "sonner"
@@ -102,11 +104,16 @@ interface RoleCardProps {
   permissionLabels: Record<string, { label: string; description: string }>
   updatingPermissions: Set<string>
   onPermissionToggle: (roleName: string, permissionId: string, newValue: boolean) => void
+  onDelete?: (roleName: string) => void
   isDraggable?: boolean
+  userPermissions?: string[]
+  isOwner?: boolean
+  isDeleting?: boolean
 }
 
-function RoleCard({ role, allPermissions, permissionLabels, updatingPermissions, onPermissionToggle, isDraggable = false }: RoleCardProps) {
+function RoleCard({ role, allPermissions, permissionLabels, updatingPermissions, onPermissionToggle, onDelete, isDraggable = false, userPermissions = [], isOwner = false, isDeleting = false }: RoleCardProps) {
   const [isExpanded, setIsExpanded] = useState(false)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
 
   const {
     attributes,
@@ -132,12 +139,41 @@ function RoleCard({ role, allPermissions, permissionLabels, updatingPermissions,
     setIsExpanded(prev => !prev)
   }
 
+  // Permission categories (defined inside component to avoid scope issues)
+  const criticalPermissions = [
+    'can_delete_project',
+    'can_manage_settings',
+    'can_manage_roles',
+    'can_edit_budget',
+  ]
+  
+  const managementPermissions = [
+    'can_invite_users',
+    'can_delete_tasks',
+  ]
+  
+  const operationalPermissions = [
+    'can_create_tasks',
+    'can_edit_tasks',
+    'can_track_time',
+  ]
+  
+  const viewPermissions = [
+    'can_view_financial',
+    'can_view_risks',
+    'can_view_dashboard',
+    'can_view_tasks',
+  ]
+
   return (
-    <Card 
+    <div
       ref={setNodeRef}
-      style={{ ...style, borderLeftColor: role.color }}
-      className="border-l-4"
+      style={style}
     >
+      <Card 
+        style={{ borderLeftColor: role.color }}
+        className="border-l-4"
+      >
       <CardContent className="py-4">
         <div className="space-y-4">
           {/* Role Header */}
@@ -187,69 +223,173 @@ function RoleCard({ role, allPermissions, permissionLabels, updatingPermissions,
 
           {/* Permissions (Expanded) */}
           {isExpanded && (
-            <div className="space-y-3 pt-4 border-t border-border">
+            <div className="space-y-4 pt-4 border-t border-border">
               <h4 className="text-sm font-medium">Permissions</h4>
-              {allPermissions.map((permissionId) => {
-                const permissionInfo = permissionLabels[permissionId]
-                const isEnabled = role.permissions.includes(permissionId)
-                const isCritical = CRITICAL_PERMISSIONS.includes(permissionId)
-                const isLocked = role.isOwner && isCritical && isEnabled
-                const updateKey = `${role.name}-${permissionId}`
-                const isUpdating = updatingPermissions.has(updateKey)
+              
+              {/* Render permission groups */}
+              {[
+                { title: 'Administration', permissions: criticalPermissions },
+                { title: 'Management', permissions: managementPermissions },
+                { title: 'Operations', permissions: operationalPermissions },
+                { title: 'Access', permissions: viewPermissions },
+              ].map((group) => (
+                <div key={group.title} className="space-y-2">
+                  <h5 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{group.title}</h5>
+                  {group.permissions.map((permissionId) => {
+                    const permissionInfo = permissionLabels[permissionId]
+                    const isEnabled = role.permissions.includes(permissionId)
+                    const isCritical = CRITICAL_PERMISSIONS.includes(permissionId)
+                    const isLocked = role.isOwner && isCritical && isEnabled
+                    
+                    // Hard limit: can_delete_project is ONLY for Owner
+                    const isOwnerOnly = permissionId === 'can_delete_project'
+                    const isDeleteProjectDisabled = isOwnerOnly && !role.isOwner
+                    
+                    // Check if user has this permission (hierarchy rule)
+                    const userHasPermission = isOwner || userPermissions.includes(permissionId)
+                    const isDisabledByHierarchy = !userHasPermission && !isOwner
+                    const updateKey = `${role.name}-${permissionId}`
+                    const isUpdating = updatingPermissions.has(updateKey)
+                    
+                    // Final disabled state
+                    const isDisabled = isLocked || isUpdating || isDisabledByHierarchy || isDeleteProjectDisabled
 
-                return (
-                  <div
-                    key={permissionId}
-                    className={`flex items-center justify-between p-3 rounded-lg border ${
-                      isLocked ? "bg-muted/50 border-primary/50" : "bg-card border-border"
-                    }`}
-                  >
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <Label htmlFor={`${role.name}-${permissionId}`}>
-                          {permissionInfo?.label || permissionId}
-                        </Label>
-                        {isLocked && <Lock className="h-3 w-3 text-primary" />}
-                        {isUpdating && (
-                          <span className="text-xs text-muted-foreground">Updating...</span>
-                        )}
+                    return (
+                      <div
+                        key={permissionId}
+                        className={`flex items-center justify-between p-3 rounded-lg border ${
+                          isLocked || isDeleteProjectDisabled ? "bg-muted/50 border-primary/50" : "bg-card border-border"
+                        }`}
+                      >
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <Label htmlFor={`${role.name}-${permissionId}`}>
+                              {permissionInfo?.label || permissionId}
+                            </Label>
+                            {isLocked && <Lock className="h-3 w-3 text-primary" />}
+                            {isDeleteProjectDisabled && <Lock className="h-3 w-3 text-primary" />}
+                            {isUpdating && (
+                              <span className="text-xs text-muted-foreground">Updating...</span>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {permissionInfo?.description || 'No description available'}
+                          </p>
+                          {isLocked && (
+                            <p className="text-xs text-primary mt-1">
+                              Critical permission: Cannot be disabled for Owner role
+                            </p>
+                          )}
+                          {isDeleteProjectDisabled && (
+                            <p className="text-xs text-primary mt-1">
+                              Reserved for Project Owner
+                            </p>
+                          )}
+                          {isDisabledByHierarchy && !isDeleteProjectDisabled && (
+                            <p className="text-xs text-destructive mt-1">
+                              You cannot grant this permission because you don't have it yourself
+                            </p>
+                          )}
+                        </div>
+                        <Switch
+                          id={`${role.name}-${permissionId}`}
+                          checked={isDeleteProjectDisabled ? false : isEnabled}
+                          disabled={isDisabled}
+                          onCheckedChange={(checked) => {
+                            // Prevent toggling if it's delete_project and not Owner
+                            if (isOwnerOnly && !role.isOwner) {
+                              return
+                            }
+                            onPermissionToggle(role.name, permissionId, checked)
+                          }}
+                        />
                       </div>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {permissionInfo?.description || 'No description available'}
-                      </p>
-                      {isLocked && (
-                        <p className="text-xs text-primary mt-1">
-                          Critical permission: Cannot be disabled for Owner role
-                        </p>
-                      )}
-                    </div>
-                    <Switch
-                      id={`${role.name}-${permissionId}`}
-                      checked={isEnabled}
-                      disabled={isLocked || isUpdating}
-                      onCheckedChange={(checked) => {
-                        onPermissionToggle(role.name, permissionId, checked)
-                      }}
-                    />
-                  </div>
-                )
-              })}
+                    )
+                  })}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Delete Role Button - in expanded footer */}
+          {/* Hide for Owner (protected) and Guest (default system role) */}
+          {isExpanded && onDelete && !role.isOwner && role.name !== 'Guest' && (
+            <div className="pt-4 mt-4 border-t border-border">
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  setShowDeleteDialog(true)
+                }}
+                className="w-full"
+                disabled={isDeleting}
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                {isDeleting ? 'Deleting...' : 'Delete Role'}
+              </Button>
+              <p className="text-xs text-muted-foreground mt-2 text-center">
+                This action cannot be undone. Make sure no members are assigned to this role.
+              </p>
             </div>
           )}
         </div>
       </CardContent>
-    </Card>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Role</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete the role "{role.name}"? This action cannot be undone.
+              <br />
+              <span className="text-destructive font-medium">
+                This role will be removed from all members who currently have it assigned.
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault()
+                if (onDelete) {
+                  onDelete(role.name)
+                }
+                setShowDeleteDialog(false)
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete Role
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      </Card>
+    </div>
   )
 }
 
 export function RolesTab() {
-  const { currentProject } = useProject()
+  const { currentProject, hasPermission, isOwner } = useProject()
   const projectId = currentProject?.id || currentProject?._id
   
   const [roles, setRoles] = useState<Role[]>([])
   const [loading, setLoading] = useState(true)
   const [updatingPermissions, setUpdatingPermissions] = useState<Set<string>>(new Set())
   const [isReordering, setIsReordering] = useState(false)
+  const [showCreateModal, setShowCreateModal] = useState(false)
+  const [deletingRole, setDeletingRole] = useState<string | null>(null)
+  
+  // Get current user's permissions
+  const userPermissions: string[] = []
+  Object.keys(permissionLabels).forEach(permission => {
+    if (hasPermission(permission)) {
+      userPermissions.push(permission)
+    }
+  })
 
   // Drag and drop sensors
   const sensors = useSensors(
@@ -308,6 +448,12 @@ export function RolesTab() {
 
     const currentPermissions = role.permissions || []
     const currentlyEnabled = currentPermissions.includes(permissionId)
+    
+    // Hard limit: can_delete_project is ONLY for Owner role
+    if (permissionId === 'can_delete_project' && !role.isOwner) {
+      toast.error('Delete Project permission is reserved for Project Owner only')
+      return
+    }
     
     // Lock check - Owner role critical permissions cannot be disabled
     if (role.isOwner && CRITICAL_PERMISSIONS.includes(permissionId) && currentlyEnabled && !newValue) {
@@ -375,6 +521,12 @@ export function RolesTab() {
     const ownerRole = roles.find(r => r.isOwner)
     const otherRoles = roles.filter(r => !r.isOwner)
 
+    // Ensure Owner cannot be dragged (should not happen, but double-check)
+    if (active.id === 'Owner' || over.id === 'Owner') {
+      toast.error('The Owner role cannot be reordered.')
+      return
+    }
+
     // Find the indices
     const oldIndex = otherRoles.findIndex(r => r.name === active.id)
     const newIndex = otherRoles.findIndex(r => r.name === over.id)
@@ -386,7 +538,7 @@ export function RolesTab() {
     // Reorder the other roles
     const reorderedRoles = arrayMove(otherRoles, oldIndex, newIndex)
 
-    // Combine: Owner first, then reordered roles
+    // Combine: Owner ALWAYS first at index 0, then reordered roles
     const newRolesOrder = ownerRole ? [ownerRole, ...reorderedRoles] : reorderedRoles
 
     // Save previous state for rollback
@@ -416,13 +568,73 @@ export function RolesTab() {
     }
   }
 
-  // Get all available permissions (sorted for consistent display)
-  const allPermissions = Object.keys(permissionLabels).sort()
+  // Handle role deletion
+  const handleDeleteRole = async (roleName: string) => {
+    if (!projectId) {
+      toast.error('Project ID not found')
+      return
+    }
+
+    setDeletingRole(roleName)
+
+    try {
+      await projectsAPI.deleteRole(projectId, roleName)
+      toast.success(`Role "${roleName}" deleted successfully`)
+      
+      // Refresh roles list
+      await fetchRoles()
+    } catch (error: any) {
+      console.error('Failed to delete role:', error)
+      toast.error(error.response?.data?.message || 'Failed to delete role')
+    } finally {
+      setDeletingRole(null)
+    }
+  }
+
+  // Get all available permissions ordered by importance and category
+  // Critical / Admin Level (Top Priority)
+  const criticalPermissions = [
+    'can_delete_project',
+    'can_manage_settings',
+    'can_manage_roles',
+    'can_edit_budget',
+  ]
+  
+  // Management Level
+  const managementPermissions = [
+    'can_invite_users',
+    'can_delete_tasks',
+  ]
+  
+  // Operational Level
+  const operationalPermissions = [
+    'can_create_tasks',
+    'can_edit_tasks',
+    'can_track_time',
+  ]
+  
+  // View Level (Least Critical)
+  const viewPermissions = [
+    'can_view_financial',
+    'can_view_risks',
+    'can_view_dashboard',
+    'can_view_tasks',
+  ]
+  
+  // Combine all permissions in order
+  const allPermissions = [
+    ...criticalPermissions,
+    ...managementPermissions,
+    ...operationalPermissions,
+    ...viewPermissions,
+  ]
 
   // Separate Owner role from other roles
   const ownerRole = roles.find(r => r.isOwner)
   const otherRoles = roles.filter(r => !r.isOwner)
   const sortableRoleIds = otherRoles.map(r => r.name)
+  
+  const canManageRoles = hasPermission('can_manage_roles')
 
   if (loading) {
     return (
@@ -442,10 +654,30 @@ export function RolesTab() {
 
   return (
     <div className="space-y-6">
+      <CreateRoleModal
+        open={showCreateModal}
+        onOpenChange={setShowCreateModal}
+        onSuccess={fetchRoles}
+        projectId={projectId || ''}
+      />
+      
       <Card>
         <CardHeader>
-          <CardTitle>Role Management</CardTitle>
-          <CardDescription>Discord-style hierarchical roles with granular permissions. Drag roles to reorder.</CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Role Management</CardTitle>
+              <CardDescription>Discord-style hierarchical roles with granular permissions. Drag roles to reorder.</CardDescription>
+            </div>
+            {canManageRoles && (
+              <Button
+                onClick={() => setShowCreateModal(true)}
+                className="flex items-center gap-2"
+              >
+                <Plus className="h-4 w-4" />
+                Create Role
+              </Button>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           <DndContext
@@ -463,7 +695,11 @@ export function RolesTab() {
                   permissionLabels={permissionLabels}
                   updatingPermissions={updatingPermissions}
                   onPermissionToggle={handlePermissionToggle}
+                  onDelete={canManageRoles ? handleDeleteRole : undefined}
                   isDraggable={false}
+                  userPermissions={userPermissions}
+                  isOwner={isOwner || false}
+                  isDeleting={deletingRole === ownerRole.name}
                 />
               )}
 
@@ -480,7 +716,11 @@ export function RolesTab() {
                     permissionLabels={permissionLabels}
                     updatingPermissions={updatingPermissions}
                     onPermissionToggle={handlePermissionToggle}
+                    onDelete={canManageRoles ? handleDeleteRole : undefined}
                     isDraggable={true}
+                    userPermissions={userPermissions}
+                    isOwner={isOwner || false}
+                    isDeleting={deletingRole === role.name}
                   />
                 ))}
               </SortableContext>

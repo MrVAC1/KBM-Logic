@@ -93,6 +93,10 @@ export const projects = {
     apiClient.put(`/projects/${projectId}/roles/${roleName}`, { permissions }),
   updateRoleOrder: (projectId, roleOrder) => 
     apiClient.put(`/projects/${projectId}/roles/order`, { roleOrder }),
+  createRole: (projectId, data) => 
+    apiClient.post(`/projects/${projectId}/roles`, data),
+  deleteRole: (projectId, roleName) => 
+    apiClient.delete(`/projects/${projectId}/roles/${roleName}`),
   join: (projectId, password) => apiClient.post('/projects/join', { projectId, password }),
   update: (projectId, data) => apiClient.put(`/projects/${projectId}`, data),
   regenerateInvite: (projectId) => apiClient.post(`/projects/${projectId}/regenerate-invite`),

@@ -1,11 +1,15 @@
 "use client"
 
 import { useState } from "react"
+import { useNavigate } from "react-router-dom"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { AlertTriangle, Lock, Trash2 } from "lucide-react"
+import { projects as projectsAPI } from "@/services/api"
+import { useProject } from "@/contexts/ProjectContext"
+import { toast } from "sonner"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -22,11 +26,16 @@ interface DangerZoneTabProps {
 }
 
 export function DangerZoneTab({ isOwner }: DangerZoneTabProps) {
+  const navigate = useNavigate()
+  const { currentProject } = useProject()
+  const projectId = currentProject?.id || currentProject?._id
+  
   const [currentPassword, setCurrentPassword] = useState("")
   const [newPassword, setNewPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [deleteConfirmation, setDeleteConfirmation] = useState("")
+  const [isDeleting, setIsDeleting] = useState(false)
 
   const handleChangePassword = () => {
     console.log("Changing password...")
@@ -35,9 +44,33 @@ export function DangerZoneTab({ isOwner }: DangerZoneTabProps) {
     setConfirmPassword("")
   }
 
-  const handleDeleteProject = () => {
-    console.log("Deleting project...")
-    setShowDeleteDialog(false)
+  const handleDeleteProject = async () => {
+    if (!projectId) {
+      toast.error('Project ID not found')
+      return
+    }
+
+    if (deleteConfirmation !== "DELETE") {
+      toast.error('Please type DELETE to confirm')
+      return
+    }
+
+    setIsDeleting(true)
+
+    try {
+      await projectsAPI.delete(projectId)
+      
+      toast.success('Project deleted successfully')
+      
+      // Redirect to projects page
+      navigate('/projects')
+    } catch (error: any) {
+      console.error('Failed to delete project:', error)
+      toast.error(error.response?.data?.message || 'Failed to delete project')
+      setIsDeleting(false)
+      setShowDeleteDialog(false)
+      setDeleteConfirmation("")
+    }
   }
 
   return (
@@ -168,10 +201,10 @@ export function DangerZoneTab({ isOwner }: DangerZoneTabProps) {
             <AlertDialogCancel onClick={() => setDeleteConfirmation("")}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDeleteProject}
-              disabled={deleteConfirmation !== "DELETE"}
+              disabled={deleteConfirmation !== "DELETE" || isDeleting}
               className="bg-destructive hover:bg-destructive/90"
             >
-              Delete Forever
+              {isDeleting ? 'Deleting...' : 'Delete Forever'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
