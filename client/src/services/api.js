@@ -138,6 +138,13 @@ export const users = {
     apiClient.put(`/projects/${projectId}/users/${userId}/salary`, { monthlySalary }),
 };
 
+export const expenses = {
+  getByProject: (projectId) => apiClient.get(`/projects/${projectId}/expenses`),
+  create: (projectId, data) => apiClient.post(`/projects/${projectId}/expenses`, data),
+  update: (projectId, expenseId, data) => apiClient.put(`/projects/${projectId}/expenses/${expenseId}`, data),
+  delete: (projectId, expenseId) => apiClient.delete(`/projects/${projectId}/expenses/${expenseId}`),
+};
+
 export default apiClient;
 
 

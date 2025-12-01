@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent } from "@/components/ui/card"
-import { Play, Pause, Clock, DollarSign, AlertTriangle, Users, Trash2 } from "lucide-react"
+import { Clock, AlertTriangle, Users, Trash2 } from "lucide-react"
 import type { Task } from "@/lib/mock-data"
 import { mockUsers, mockCurrentUser } from "@/lib/mock-data"
 import { tasks as tasksAPI } from "@/services/api"
@@ -25,7 +25,6 @@ interface TaskDetailModalProps {
 
 export function TaskDetailModal({ task, open, onOpenChange, onUpdate }: TaskDetailModalProps) {
   const [viewMode, setViewMode] = useState<"manager" | "developer">("manager")
-  const [isTracking, setIsTracking] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const { hasPermission } = useProject()
@@ -35,9 +34,7 @@ export function TaskDetailModal({ task, open, onOpenChange, onUpdate }: TaskDeta
 
   // Defensive coding: Ensure arrays exist before accessing
   const taskAssignees = Array.isArray(task?.assignees) ? task.assignees : []
-  const taskTimeTracking = Array.isArray(task?.timeTracking) ? task.timeTracking : []
 
-  const hasTimeTrackingPermission = mockCurrentUser?.permissions?.includes("can_track_time") || false
   // Use populated assignee data directly from backend
   const assignedUsers = taskAssignees.filter(Boolean).map((assignee: any) => ({
     id: assignee._id || assignee.id,
@@ -46,10 +43,6 @@ export function TaskDetailModal({ task, open, onOpenChange, onUpdate }: TaskDeta
     avatar: assignee.avatar || assignee.photoURL || '',
     nickname: assignee.displayName || assignee.name || assignee.email?.split('@')[0] || 'Deleted User',
   }))
-  const currentUserTracking = taskTimeTracking.find((t) => t?.userId === mockCurrentUser?.id)
-
-  const totalHours = taskTimeTracking.reduce((sum, t) => sum + (t?.totalHours || 0), 0)
-  const hourlyCost = totalHours > 0 ? (task?.actualCost || 0) / totalHours : 0
 
   const getRiskColor = (prob: number, impact: number) => {
     const score = prob * impact
@@ -166,83 +159,17 @@ export function TaskDetailModal({ task, open, onOpenChange, onUpdate }: TaskDeta
 
           <Separator />
 
-          {/* Time Tracking Section (Permission Required) */}
-          {hasTimeTrackingPermission && (
-            <>
-              <div className="space-y-3">
-                <Label className="flex items-center gap-2">
-                  <Clock className="h-4 w-4" />
-                  Time Tracking
-                </Label>
-                <Card className="border-primary/50">
-                  <CardContent className="pt-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-muted-foreground">Your Time</p>
-                        <p className="text-2xl font-bold">{currentUserTracking?.totalHours || 0}h</p>
-                      </div>
-                      <Button
-                        size="lg"
-                        variant={isTracking ? "destructive" : "default"}
-                        onClick={() => setIsTracking(!isTracking)}
-                      >
-                        {isTracking ? (
-                          <>
-                            <Pause className="mr-2 h-5 w-5" />
-                            Stop Tracking
-                          </>
-                        ) : (
-                          <>
-                            <Play className="mr-2 h-5 w-5" />
-                            Start Tracking
-                          </>
-                        )}
-                      </Button>
-                    </div>
-                    {viewMode === "manager" && (
-                      <div className="mt-4 pt-4 border-t border-border">
-                        <p className="text-sm text-muted-foreground">Cost Calculation</p>
-                        <p className="text-lg font-bold text-primary">
-                          ${(task?.actualCost || 0).toLocaleString()} ({totalHours}h × ${hourlyCost.toFixed(2)}/h)
-                        </p>
-                      </div>
-                    )}
-                    {viewMode === "developer" && (
-                      <p className="mt-4 text-xs text-muted-foreground">
-                        Other team members' earnings are hidden in developer view
-                      </p>
-                    )}
-                  </CardContent>
-                </Card>
-              </div>
-              <Separator />
-            </>
-          )}
-
-          {/* Financial Stats (Manager View) */}
+          {/* Estimate Hours (Manager View) */}
           {viewMode === "manager" && (
             <>
               <div className="grid grid-cols-2 gap-4">
                 <Card>
                   <CardContent className="pt-6">
                     <div className="flex items-center gap-2 text-muted-foreground mb-2">
-                      <DollarSign className="h-4 w-4" />
-                      <span className="text-sm">Estimated Cost</span>
+                      <Clock className="h-4 w-4" />
+                      <span className="text-sm">Estimated Hours</span>
                     </div>
-                    <p className="text-2xl font-bold">${(task?.estimatedCost || 0).toLocaleString()}</p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="flex items-center gap-2 text-muted-foreground mb-2">
-                      <DollarSign className="h-4 w-4" />
-                      <span className="text-sm">Actual Cost</span>
-                    </div>
-                    <p
-                      className={`text-2xl font-bold ${(task?.actualCost || 0) > (task?.estimatedCost || 0) ? "text-destructive" : "text-foreground"}`}
-                    >
-                      ${(task?.actualCost || 0).toLocaleString()}
-                    </p>
+                    <p className="text-2xl font-bold">{(task?.estimateHours || 0).toLocaleString()}h</p>
                   </CardContent>
                 </Card>
               </div>

@@ -44,8 +44,6 @@ import {
   createTask,
   updateTask,
   deleteTask,
-  startTimer,
-  stopTimer,
 } from '../controllers/taskController.js';
 
 // Financials
@@ -60,6 +58,14 @@ import {
   updateUserSalary,
   getUserDetails,
 } from '../controllers/userController.js';
+
+// Expenses
+import {
+  getExpenses,
+  createExpense,
+  updateExpense,
+  deleteExpense,
+} from '../controllers/expenseController.js';
 
 const router = express.Router();
 
@@ -103,8 +109,6 @@ router.post('/projects/:projectId/tasks', verifyToken, checkDatabaseConnection, 
 router.put('/tasks/:taskId', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_edit_tasks'), validate('updateTask'), updateTask);
 // Note: deleteTask handles permission checking internally since it needs to get projectId from task
 router.delete('/tasks/:taskId', verifyToken, checkDatabaseConnection, deleteTask);
-router.post('/tasks/:taskId/start-timer', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_track_time'), startTimer);
-router.post('/tasks/:taskId/stop-timer', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_track_time'), stopTimer);
 
 // Financial routes (with granular permissions)
 router.get('/projects/:projectId/stats', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_view_financial'), getDashboardStats);
@@ -114,6 +118,12 @@ router.get('/projects/:projectId/transactions', verifyToken, checkDatabaseConnec
 // User routes (salary management requires project context for permission checks)
 router.get('/users/:userId', verifyToken, checkDatabaseConnection, getUserDetails);
 router.put('/projects/:projectId/users/:userId/salary', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_manage_salaries'), updateUserSalary);
+
+// Expense routes
+router.get('/projects/:projectId/expenses', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_view_financial'), getExpenses);
+router.post('/projects/:projectId/expenses', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_edit_budget'), createExpense);
+router.put('/projects/:projectId/expenses/:expenseId', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_edit_budget'), updateExpense);
+router.delete('/projects/:projectId/expenses/:expenseId', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_edit_budget'), deleteExpense);
 
 export default router;
 

@@ -16,8 +16,8 @@ import {
   TableRow 
 } from "@/components/ui/table"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
-import { Plus, Users, Trash2, Shield, Ban, UserCheck, Settings2, UserCog, Loader2, Check } from "lucide-react"
-import { projects as projectsAPI, users as usersAPI } from "@/services/api"
+import { Plus, Users, Trash2, Shield, Ban, UserCheck, Settings2, UserCog, Loader2, Check, DollarSign, Edit2 } from "lucide-react"
+import { projects as projectsAPI, users as usersAPI, expenses as expensesAPI } from "@/services/api"
 import { useProject } from "@/contexts/ProjectContext"
 import { toast } from "sonner"
 import { format } from "date-fns"
@@ -26,6 +26,7 @@ import { DepartmentDetailModal } from "./department-detail-modal"
 import { BlockUserModal } from "./block-user-modal"
 import { EditMemberRolesModal } from "./edit-member-roles-modal"
 import { ManageDepartmentMembersModal } from "./manage-department-members-modal"
+import { ExpenseModal } from "./expense-modal"
 
 interface Department {
   id: string
@@ -101,10 +102,18 @@ export function TeamsTab() {
   const canManageRoles = hasPermission('can_manage_roles')
   const canManageSalaries = hasPermission('can_manage_salaries')
 
-  // Salary editing state
+  // Salary editing state (for Costs tab)
   const [editingSalaryUserId, setEditingSalaryUserId] = useState<string | null>(null)
   const [salaryValues, setSalaryValues] = useState<Record<string, string>>({})
   const [savingSalaryUserId, setSavingSalaryUserId] = useState<string | null>(null)
+
+  // Expenses state
+  const [expenses, setExpenses] = useState<any[]>([])
+  const [expensesLoading, setExpensesLoading] = useState(true)
+  const [showExpenseModal, setShowExpenseModal] = useState(false)
+  const [editingExpense, setEditingExpense] = useState<any | null>(null)
+  const [deletingExpenseId, setDeletingExpenseId] = useState<string | null>(null)
+  const [showDeleteExpenseDialog, setShowDeleteExpenseDialog] = useState(false)
 
   // Fetch departments
   const fetchDepartments = useCallback(async () => {
@@ -190,6 +199,31 @@ export function TeamsTab() {
   useEffect(() => {
     fetchBannedUsers()
   }, [fetchBannedUsers])
+
+  // Fetch expenses
+  const fetchExpenses = useCallback(async () => {
+    if (!projectId) {
+      setExpensesLoading(false)
+      return
+    }
+
+    try {
+      setExpensesLoading(true)
+      const response = await expensesAPI.getByProject(projectId)
+      const data = response.data?.data || response.data
+      setExpenses(data.expenses || [])
+    } catch (error: any) {
+      console.error('Failed to fetch expenses:', error)
+      toast.error(error.response?.data?.message || 'Failed to load expenses')
+      setExpenses([])
+    } finally {
+      setExpensesLoading(false)
+    }
+  }, [projectId])
+
+  useEffect(() => {
+    fetchExpenses()
+  }, [fetchExpenses])
 
   // Fetch available roles for role assignment
   useEffect(() => {
@@ -347,6 +381,58 @@ export function TeamsTab() {
     }
   }
 
+  // Handle expense creation/update from modal
+  const handleExpenseSubmit = async (data?: { name: string; amount: number; frequency: string }) => {
+    if (!projectId || !canManageSettings || !data) return
+
+    try {
+      if (editingExpense?._id || editingExpense?.id) {
+        // Update existing expense
+        const expenseId = editingExpense._id || editingExpense.id
+        await expensesAPI.update(projectId, expenseId, data)
+        toast.success('Expense updated successfully')
+      } else {
+        // Create new expense
+        await expensesAPI.create(projectId, data)
+        toast.success('Expense created successfully')
+      }
+      
+      setShowExpenseModal(false)
+      setEditingExpense(null)
+      await fetchExpenses()
+    } catch (error: any) {
+      console.error('Failed to save expense:', error)
+      toast.error(error.response?.data?.message || 'Failed to save expense')
+    }
+  }
+
+  // Handle expense deletion
+  const handleDeleteExpense = async () => {
+    if (!projectId || !deletingExpenseId) return
+
+    try {
+      await expensesAPI.delete(projectId, deletingExpenseId)
+      toast.success('Expense deleted successfully')
+      setShowDeleteExpenseDialog(false)
+      setDeletingExpenseId(null)
+      await fetchExpenses()
+    } catch (error: any) {
+      console.error('Failed to delete expense:', error)
+      toast.error(error.response?.data?.message || 'Failed to delete expense')
+      setDeletingExpenseId(null)
+    }
+  }
+
+  const handleOpenExpenseModal = (expense?: any) => {
+    setEditingExpense(expense || { name: '', amount: '' })
+    setShowExpenseModal(true)
+  }
+
+  const handleCloseExpenseModal = () => {
+    setShowExpenseModal(false)
+    setEditingExpense(null)
+  }
+
   return (
     <div className="space-y-6">
       {/* Modals */}
@@ -455,6 +541,7 @@ export function TeamsTab() {
         <TabsList>
           <TabsTrigger value="departments">Departments</TabsTrigger>
           <TabsTrigger value="members">All Members</TabsTrigger>
+          <TabsTrigger value="costs">Costs</TabsTrigger>
           <TabsTrigger value="banned">Blocked Users</TabsTrigger>
         </TabsList>
 
@@ -570,7 +657,6 @@ export function TeamsTab() {
                       <TableHead>Role</TableHead>
                       <TableHead>Joined</TableHead>
                       <TableHead>Active Tasks</TableHead>
-                      {canManageSalaries && <TableHead>Salary</TableHead>}
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -633,67 +719,6 @@ export function TeamsTab() {
                             {member.activeTaskCount} active
                           </Badge>
                         </TableCell>
-                        {canManageSalaries && (
-                          <TableCell>
-                            <div className="flex items-center gap-2 w-32">
-                              {savingSalaryUserId === member.userId ? (
-                                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                              ) : editingSalaryUserId === member.userId ? (
-                                <div className="flex items-center gap-1 flex-1">
-                                  <Input
-                                    type="number"
-                                    min="0"
-                                    step="0.01"
-                                    value={salaryValues[member.userId] || member.monthlySalary?.toString() || '0'}
-                                    onChange={(e) => handleSalaryChange(member.userId, e.target.value)}
-                                    onBlur={() => handleSalaryBlur(member.userId)}
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter') {
-                                        handleSaveSalary(member.userId)
-                                      } else if (e.key === 'Escape') {
-                                        // Reset to original value
-                                        const originalValue = member.monthlySalary?.toString() || '0'
-                                        setSalaryValues(prev => ({
-                                          ...prev,
-                                          [member.userId]: originalValue
-                                        }))
-                                        setEditingSalaryUserId(null)
-                                      }
-                                    }}
-                                    className="h-8 text-sm"
-                                    autoFocus
-                                  />
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    className="h-8 w-8 p-0"
-                                    onClick={() => handleSaveSalary(member.userId)}
-                                  >
-                                    <Check className="h-4 w-4 text-green-600" />
-                                  </Button>
-                                </div>
-                              ) : (
-                                <div
-                                  className="flex items-center gap-2 cursor-pointer hover:bg-muted/50 rounded px-2 py-1 transition-colors flex-1"
-                                  onClick={() => {
-                                    setEditingSalaryUserId(member.userId)
-                                    setSalaryValues(prev => ({
-                                      ...prev,
-                                      [member.userId]: member.monthlySalary?.toString() || '0'
-                                    }))
-                                  }}
-                                >
-                                  <span className="text-sm text-muted-foreground">
-                                    ${(member.monthlySalary || 0).toLocaleString('en-US', {
-                                      minimumFractionDigits: 2,
-                                      maximumFractionDigits: 2
-                                    })}/mo
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-                          </TableCell>
-                        )}
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-2">
                             {canManageRoles && !member.isOwner && (
@@ -734,6 +759,227 @@ export function TeamsTab() {
                   </TableBody>
                 </Table>
               )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Costs Tab */}
+        <TabsContent value="costs" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Costs & Expenses</CardTitle>
+                  <CardDescription>Manage employee salaries and project expenses</CardDescription>
+                </div>
+                {canManageSettings && (
+                  <Button
+                    onClick={() => handleOpenExpenseModal()}
+                    size="sm"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Expense
+                  </Button>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Salaries Section */}
+              <div>
+                <h3 className="text-lg font-semibold mb-4">Employee Salaries</h3>
+                {membersLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <p className="text-sm text-muted-foreground">Loading members...</p>
+                  </div>
+                ) : members.length === 0 ? (
+                  <div className="flex items-center justify-center py-8">
+                    <p className="text-sm text-muted-foreground">No members found</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {members.map((member) => (
+                      <Card key={member._id || member.userId} className="border-border">
+                        <CardContent className="py-4">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3 flex-1">
+                              <Avatar className="h-10 w-10">
+                                <AvatarImage src={member.avatar || "/placeholder.svg"} alt={member.displayName} />
+                                <AvatarFallback className="text-xs">
+                                  {member.displayName.slice(0, 2).toUpperCase()}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2">
+                                  <p className="font-medium">{member.displayName}</p>
+                                  {member.isOwner && (
+                                    <Shield className="h-4 w-4 text-primary flex-shrink-0" />
+                                  )}
+                                </div>
+                                <p className="text-sm text-muted-foreground">{member.email}</p>
+                                <div className="flex items-center gap-2 mt-1">
+                                  {(() => {
+                                    const memberRoles = Array.isArray(member.roles) && member.roles.length > 0
+                                      ? member.roles
+                                      : (member.roleName ? [member.roleName] : ['Guest'])
+                                    return (
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        {memberRoles.slice(0, 2).map((roleName, idx) => (
+                                          <Badge key={idx} variant="secondary" className="text-xs">
+                                            {roleName}
+                                          </Badge>
+                                        ))}
+                                        {memberRoles.length > 2 && (
+                                          <Badge variant="outline" className="text-xs">
+                                            +{memberRoles.length - 2} more
+                                          </Badge>
+                                        )}
+                                      </div>
+                                    )
+                                  })()}
+                                  <span className="text-xs text-muted-foreground">
+                                    Joined {format(new Date(member.joinedAt), "MMM d, yyyy")}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                            {canManageSalaries && (
+                              <div className="flex items-center gap-2 w-40">
+                                {savingSalaryUserId === member.userId ? (
+                                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                                ) : editingSalaryUserId === member.userId ? (
+                                  <div className="flex items-center gap-1 flex-1">
+                                    <Input
+                                      type="number"
+                                      min="0"
+                                      step="0.01"
+                                      value={salaryValues[member.userId] || member.monthlySalary?.toString() || '0'}
+                                      onChange={(e) => handleSalaryChange(member.userId, e.target.value)}
+                                      onBlur={() => handleSalaryBlur(member.userId)}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                          handleSaveSalary(member.userId)
+                                        } else if (e.key === 'Escape') {
+                                          const originalValue = member.monthlySalary?.toString() || '0'
+                                          setSalaryValues(prev => ({
+                                            ...prev,
+                                            [member.userId]: originalValue
+                                          }))
+                                          setEditingSalaryUserId(null)
+                                        }
+                                      }}
+                                      className="h-8 text-sm"
+                                      autoFocus
+                                    />
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-8 w-8 p-0"
+                                      onClick={() => handleSaveSalary(member.userId)}
+                                    >
+                                      <Check className="h-4 w-4 text-green-600" />
+                                    </Button>
+                                  </div>
+                                ) : (
+                                  <div
+                                    className="flex items-center gap-2 cursor-pointer hover:bg-muted/50 rounded px-2 py-1 transition-colors flex-1"
+                                    onClick={() => {
+                                      setEditingSalaryUserId(member.userId)
+                                      setSalaryValues(prev => ({
+                                        ...prev,
+                                        [member.userId]: member.monthlySalary?.toString() || '0'
+                                      }))
+                                    }}
+                                  >
+                                    <DollarSign className="h-4 w-4 text-muted-foreground" />
+                                    <span className="text-sm font-medium">
+                                      ${(member.monthlySalary || 0).toLocaleString('en-US', {
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2
+                                      })}/mo
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Expenses Section */}
+              <div>
+                <h3 className="text-lg font-semibold mb-4">Project Expenses</h3>
+                {expensesLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <p className="text-sm text-muted-foreground">Loading expenses...</p>
+                  </div>
+                ) : expenses.length === 0 ? (
+                  <div className="flex items-center justify-center py-8">
+                    <p className="text-sm text-muted-foreground">No expenses yet. Add your first expense!</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {expenses.map((expense) => (
+                      <Card key={expense._id || expense.id} className="border-border">
+                        <CardContent className="py-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1">
+                              <p className="font-medium">{expense.name}</p>
+                              <p className="text-sm text-muted-foreground">
+                                <Badge variant="outline" className="mr-2">
+                                  {expense.frequency === 'daily' ? 'Daily' :
+                                   expense.frequency === 'weekly' ? 'Weekly' :
+                                   expense.frequency === 'monthly' ? 'Monthly' :
+                                   expense.frequency === 'yearly' ? 'Yearly' : 'Monthly'}
+                                </Badge>
+                                Created {expense.createdAt ? format(new Date(expense.createdAt), "MMM d, yyyy") : 'N/A'}
+                                {expense.updatedAt && expense.updatedAt !== expense.createdAt && (
+                                  <span> • Updated {format(new Date(expense.updatedAt), "MMM d, yyyy")}</span>
+                                )}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-4">
+                              <div className="text-right">
+                                <p className="text-lg font-bold">
+                                  ${(expense.amount || 0).toLocaleString('en-US', {
+                                    minimumFractionDigits: 2,
+                                    maximumFractionDigits: 2
+                                  })}
+                                </p>
+                              </div>
+                              {canManageSettings && (
+                                <div className="flex items-center gap-2">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleOpenExpenseModal(expense)}
+                                  >
+                                    <Edit2 className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-destructive hover:text-destructive"
+                                    onClick={() => {
+                                      setDeletingExpenseId(expense._id || expense.id)
+                                      setShowDeleteExpenseDialog(true)
+                                    }}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -809,6 +1055,41 @@ export function TeamsTab() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Expense Modal */}
+      <ExpenseModal
+        open={showExpenseModal}
+        onOpenChange={handleCloseExpenseModal}
+        expense={editingExpense}
+        onSuccess={handleExpenseSubmit}
+      />
+
+      {/* Delete Expense Dialog */}
+      <AlertDialog open={showDeleteExpenseDialog} onOpenChange={setShowDeleteExpenseDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Expense</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this expense? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => {
+              setShowDeleteExpenseDialog(false)
+              setDeletingExpenseId(null)
+            }}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteExpense}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={!deletingExpenseId}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

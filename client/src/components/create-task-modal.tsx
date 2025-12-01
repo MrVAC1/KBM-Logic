@@ -37,7 +37,7 @@ export function CreateTaskModal({ open, onOpenChange, onSuccess, projectId }: Cr
   const [selectedDepartment, setSelectedDepartment] = useState<string>("")
   const [everyoneCanClaim, setEveryoneCanClaim] = useState(false)
   const [deadline, setDeadline] = useState<Date>()
-  const [estimatedCost, setEstimatedCost] = useState("")
+  const [estimateHours, setEstimateHours] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   
   // Get available users from project members
@@ -72,7 +72,7 @@ export function CreateTaskModal({ open, onOpenChange, onSuccess, projectId }: Cr
       setSelectedDepartment("")
       setEveryoneCanClaim(false)
       setDeadline(undefined)
-      setEstimatedCost("")
+      setEstimateHours("")
       setIsSubmitting(false)
     }
   }, [open])
@@ -173,8 +173,8 @@ export function CreateTaskModal({ open, onOpenChange, onSuccess, projectId }: Cr
       }
 
       // Add optional fields
-      if (estimatedCost) {
-        taskData.estimatedCost = parseFloat(estimatedCost) || 0
+      if (estimateHours) {
+        taskData.estimateHours = parseFloat(estimateHours) || 0
       }
 
       console.log('📤 Creating task:', { projectId: actualProjectId, taskData })
@@ -400,13 +400,15 @@ export function CreateTaskModal({ open, onOpenChange, onSuccess, projectId }: Cr
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="estimated-cost">Estimated Cost</Label>
+              <Label htmlFor="estimate-hours">Estimated Hours</Label>
               <Input
-                id="estimated-cost"
+                id="estimate-hours"
                 type="number"
-                placeholder="0.00"
-                value={estimatedCost}
-                onChange={(e) => setEstimatedCost(e.target.value)}
+                placeholder="0"
+                min="0"
+                step="0.5"
+                value={estimateHours}
+                onChange={(e) => setEstimateHours(e.target.value)}
               />
             </div>
           </div>
