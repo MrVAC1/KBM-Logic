@@ -1,12 +1,29 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { Shield, Lock, ChevronDown, ChevronUp } from "lucide-react"
+import { Shield, Lock, ChevronDown, ChevronUp, GripVertical } from "lucide-react"
 import { projects as projectsAPI } from "@/services/api"
 import { useProject } from "@/contexts/ProjectContext"
 import { toast } from "sonner"
@@ -85,11 +102,29 @@ interface RoleCardProps {
   permissionLabels: Record<string, { label: string; description: string }>
   updatingPermissions: Set<string>
   onPermissionToggle: (roleName: string, permissionId: string, newValue: boolean) => void
+  isDraggable?: boolean
 }
 
-function RoleCard({ role, allPermissions, permissionLabels, updatingPermissions, onPermissionToggle }: RoleCardProps) {
-  // Local state for expand/collapse - isolated to this component
+function RoleCard({ role, allPermissions, permissionLabels, updatingPermissions, onPermissionToggle, isDraggable = false }: RoleCardProps) {
   const [isExpanded, setIsExpanded] = useState(false)
+
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ 
+    id: role.name,
+    disabled: !isDraggable,
+  })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  }
 
   const handleToggleExpand = (e: React.MouseEvent) => {
     e.preventDefault()
@@ -98,12 +133,28 @@ function RoleCard({ role, allPermissions, permissionLabels, updatingPermissions,
   }
 
   return (
-    <Card className="border-l-4" style={{ borderLeftColor: role.color }}>
+    <Card 
+      ref={setNodeRef}
+      style={{ ...style, borderLeftColor: role.color }}
+      className="border-l-4"
+    >
       <CardContent className="py-4">
         <div className="space-y-4">
           {/* Role Header */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
+              {/* Drag Handle - only show for draggable roles */}
+              {isDraggable && (
+                <button
+                  type="button"
+                  {...attributes}
+                  {...listeners}
+                  className="cursor-grab active:cursor-grabbing touch-none p-1 -ml-1 text-muted-foreground hover:text-foreground transition-colors"
+                  aria-label={`Drag to reorder ${role.name} role`}
+                >
+                  <GripVertical className="h-5 w-5" />
+                </button>
+              )}
               <div className="h-3 w-3 rounded-full" style={{ backgroundColor: role.color }} />
               <div>
                 <div className="flex items-center gap-2">
@@ -197,7 +248,16 @@ export function RolesTab() {
   
   const [roles, setRoles] = useState<Role[]>([])
   const [loading, setLoading] = useState(true)
-  const [updatingPermissions, setUpdatingPermissions] = useState<Set<string>>(new Set()) // Track which permissions are being updated
+  const [updatingPermissions, setUpdatingPermissions] = useState<Set<string>>(new Set())
+  const [isReordering, setIsReordering] = useState(false)
+
+  // Drag and drop sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  )
 
   // Fetch roles from backend
   const fetchRoles = useCallback(async () => {
@@ -227,7 +287,7 @@ export function RolesTab() {
     } finally {
       setLoading(false)
     }
-  }, [projectId]) // Removed expandedRole dependency to prevent unnecessary re-fetches
+  }, [projectId])
 
   useEffect(() => {
     fetchRoles()
@@ -240,7 +300,6 @@ export function RolesTab() {
       return
     }
 
-    // Get current role state from latest roles
     const role = roles.find(r => r.name === roleName)
     if (!role) {
       toast.error('Role not found')
@@ -263,8 +322,8 @@ export function RolesTab() {
 
     // Calculate new permissions
     const newPermissions = newValue
-      ? [...currentPermissions, permissionId] // Add permission
-      : currentPermissions.filter(p => p !== permissionId) // Remove permission
+      ? [...currentPermissions, permissionId]
+      : currentPermissions.filter(p => p !== permissionId)
 
     // Save previous state for rollback
     const previousRoles = [...roles]
@@ -283,20 +342,12 @@ export function RolesTab() {
     )
 
     try {
-      // Make API call to update role permissions
       await projectsAPI.updateRolePermissions(projectId, roleName, newPermissions)
-      
       toast.success(`Permission ${newValue ? 'granted' : 'removed'} successfully`)
-      
-      // State is already updated optimistically, no need to update again
-      // This keeps the UI snappy and prevents flickering
-      
     } catch (error: any) {
       console.error('Failed to update permission:', error)
-      
       // REVERT: Rollback to previous state on error
       setRoles(previousRoles)
-      
       toast.error(error.response?.data?.message || 'Failed to update permission')
     } finally {
       setUpdatingPermissions(prev => {
@@ -307,8 +358,71 @@ export function RolesTab() {
     }
   }
 
+  // Handle drag end - update role order
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event
+
+    if (!over || active.id === over.id) {
+      return
+    }
+
+    if (!projectId) {
+      toast.error('Project ID not found')
+      return
+    }
+
+    // Separate Owner role from other roles
+    const ownerRole = roles.find(r => r.isOwner)
+    const otherRoles = roles.filter(r => !r.isOwner)
+
+    // Find the indices
+    const oldIndex = otherRoles.findIndex(r => r.name === active.id)
+    const newIndex = otherRoles.findIndex(r => r.name === over.id)
+
+    if (oldIndex === -1 || newIndex === -1) {
+      return
+    }
+
+    // Reorder the other roles
+    const reorderedRoles = arrayMove(otherRoles, oldIndex, newIndex)
+
+    // Combine: Owner first, then reordered roles
+    const newRolesOrder = ownerRole ? [ownerRole, ...reorderedRoles] : reorderedRoles
+
+    // Save previous state for rollback
+    const previousRoles = [...roles]
+
+    // OPTIMISTIC UPDATE: Update state immediately
+    setRoles(newRolesOrder)
+    setIsReordering(true)
+
+    try {
+      // Extract role names in new order
+      const roleOrder = newRolesOrder.map(r => r.name)
+      
+      // Call API to update order
+      await projectsAPI.updateRoleOrder(projectId, roleOrder)
+      
+      toast.success('Role order updated successfully')
+    } catch (error: any) {
+      console.error('Failed to update role order:', error)
+      
+      // REVERT: Rollback to previous state on error
+      setRoles(previousRoles)
+      
+      toast.error(error.response?.data?.message || 'Failed to update role order')
+    } finally {
+      setIsReordering(false)
+    }
+  }
+
   // Get all available permissions (sorted for consistent display)
   const allPermissions = Object.keys(permissionLabels).sort()
+
+  // Separate Owner role from other roles
+  const ownerRole = roles.find(r => r.isOwner)
+  const otherRoles = roles.filter(r => !r.isOwner)
+  const sortableRoleIds = otherRoles.map(r => r.name)
 
   if (loading) {
     return (
@@ -331,23 +445,53 @@ export function RolesTab() {
       <Card>
         <CardHeader>
           <CardTitle>Role Management</CardTitle>
-          <CardDescription>Discord-style hierarchical roles with granular permissions</CardDescription>
+          <CardDescription>Discord-style hierarchical roles with granular permissions. Drag roles to reorder.</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-3">
-            {roles
-              .sort((a, b) => a.hierarchy - b.hierarchy)
-              .map((role) => (
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <div className="space-y-3">
+              {/* Owner Role - Pinned at top, not draggable */}
+              {ownerRole && (
                 <RoleCard
-                  key={role.name}
-                  role={role}
+                  key={ownerRole.name}
+                  role={ownerRole}
                   allPermissions={allPermissions}
                   permissionLabels={permissionLabels}
                   updatingPermissions={updatingPermissions}
                   onPermissionToggle={handlePermissionToggle}
+                  isDraggable={false}
                 />
-              ))}
-          </div>
+              )}
+
+              {/* Other Roles - Sortable */}
+              <SortableContext
+                items={sortableRoleIds}
+                strategy={verticalListSortingStrategy}
+              >
+                {otherRoles.map((role) => (
+                  <RoleCard
+                    key={role.name}
+                    role={role}
+                    allPermissions={allPermissions}
+                    permissionLabels={permissionLabels}
+                    updatingPermissions={updatingPermissions}
+                    onPermissionToggle={handlePermissionToggle}
+                    isDraggable={true}
+                  />
+                ))}
+              </SortableContext>
+            </div>
+          </DndContext>
+          
+          {isReordering && (
+            <div className="mt-4 text-center">
+              <p className="text-xs text-muted-foreground">Updating role order...</p>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

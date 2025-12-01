@@ -19,6 +19,7 @@ import {
   updateMemberRole,
   getProjectRoles,
   updateRolePermissions,
+  updateRoleOrder,
 } from '../controllers/projectController.js';
 
 // Tasks
@@ -49,6 +50,7 @@ router.get('/projects', verifyToken, checkDatabaseConnection, getMyProjects);
 router.get('/projects/:projectId', verifyToken, checkDatabaseConnection, checkProjectMember, getProjectDetails);
 router.get('/projects/:projectId/roles', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_manage_roles'), getProjectRoles);
 router.put('/projects/:projectId/roles/:roleName', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_manage_roles'), updateRolePermissions);
+router.put('/projects/:projectId/roles/order', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_manage_roles'), updateRoleOrder);
 router.post('/projects/join', verifyToken, checkDatabaseConnection, validate('joinProject'), joinProject);
 router.put('/projects/:projectId', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_manage_settings'), validate('updateProject'), updateProject);
 router.post('/projects/:projectId/regenerate-invite', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_invite_users'), regenerateInviteCode);
