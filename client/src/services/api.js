@@ -89,6 +89,8 @@ export const projects = {
   getAll: () => apiClient.get('/projects'),
   getById: (projectId) => apiClient.get(`/projects/${projectId}`),
   getRoles: (projectId) => apiClient.get(`/projects/${projectId}/roles`),
+  updateRolePermissions: (projectId, roleName, permissions) => 
+    apiClient.put(`/projects/${projectId}/roles/${roleName}`, { permissions }),
   join: (projectId, password) => apiClient.post('/projects/join', { projectId, password }),
   update: (projectId, data) => apiClient.put(`/projects/${projectId}`, data),
   regenerateInvite: (projectId) => apiClient.post(`/projects/${projectId}/regenerate-invite`),

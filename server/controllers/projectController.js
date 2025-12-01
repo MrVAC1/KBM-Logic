@@ -431,33 +431,106 @@ export const regenerateInviteCode = async (req, res) => {
 };
 
 /**
- * Get roles from a project (for import)
+ * Get roles from a project (for import and settings)
  * GET /api/projects/:projectId/roles
  * 
- * Only accessible by project owner (no member check needed)
+ * Only accessible by project owner or users with can_manage_roles permission
  */
 export const getProjectRoles = async (req, res) => {
   try {
-    const projectId = req.params.projectId;
-    const userId = req.dbUser._id;
+    const project = req.project;
+    // Permission check is handled by requirePermission('can_manage_roles') middleware
 
-    const project = await Project.findById(projectId);
-    if (!project || project.isDeleted) {
-      return sendError(res, 'Project not found', 404);
+    // Get all roles from members
+    const allRoles = extractRoleDefinitions(project.members);
+    
+    // Get default roles for hierarchy and color info
+    const defaultRoles = Project.getDefaultRoles();
+    
+    // Ensure Owner role is always included (even if not in members array)
+    const ownerDefaultRole = defaultRoles.find(r => r.name === 'Owner');
+    const hasOwnerRole = allRoles.some(r => r.name === 'Owner');
+    
+    if (!hasOwnerRole && ownerDefaultRole) {
+      allRoles.push({
+        name: 'Owner',
+        permissions: ALL_PERMISSIONS, // Owner always has all permissions
+      });
     }
-
-    // Only owner can export roles
-    if (project.ownerId.toString() !== userId.toString()) {
-      return sendError(res, 'Only project owner can export roles', 403);
-    }
+    
+    // Merge with default role info (hierarchy, color)
+    const rolesWithMetadata = allRoles.map(role => {
+      const defaultRole = defaultRoles.find(r => r.name === role.name);
+      return {
+        name: role.name,
+        permissions: role.permissions || (role.name === 'Owner' ? ALL_PERMISSIONS : []),
+        hierarchy: defaultRole?.hierarchy || 100,
+        color: defaultRole?.color || '#6b7280',
+        isOwner: role.name === 'Owner',
+      };
+    });
 
     sendSuccess(res, {
-      roles: extractRoleDefinitions(project.members).filter(r => r.name !== 'Owner'), // Exclude Owner role
+      roles: rolesWithMetadata,
       projectName: project.name,
     });
   } catch (error) {
     logger.error(`Get Project Roles Error: ${error.message}`, { error });
     sendError(res, 'Failed to fetch roles', 500);
+  }
+};
+
+/**
+ * Update role permissions
+ * PUT /api/projects/:projectId/roles/:roleName
+ * 
+ * Updates permissions for all members with the specified role
+ */
+export const updateRolePermissions = async (req, res) => {
+  try {
+    const project = req.project;
+    const { roleName } = req.params;
+    const { permissions } = req.body;
+    
+    // Permission check is handled by requirePermission('can_manage_roles') middleware
+
+    // Cannot modify Owner role permissions
+    if (roleName === 'Owner') {
+      return sendError(res, 'Cannot modify Owner role permissions', 403);
+    }
+
+    // Validate permissions array
+    if (!Array.isArray(permissions)) {
+      return sendError(res, 'Permissions must be an array', 400);
+    }
+
+    // Validate that all permissions are valid
+    const invalidPermissions = permissions.filter(p => !ALL_PERMISSIONS.includes(p));
+    if (invalidPermissions.length > 0) {
+      return sendError(res, `Invalid permissions: ${invalidPermissions.join(', ')}`, 400);
+    }
+
+    // Update all members with this role
+    let updatedCount = 0;
+    project.members.forEach((member, index) => {
+      if (member.roleName === roleName && member.userId.toString() !== project.ownerId.toString()) {
+        // Don't update owner's permissions even if they somehow have a different roleName
+        project.members[index].permissions = [...permissions];
+        updatedCount++;
+      }
+    });
+
+    await project.save();
+
+    sendSuccess(res, {
+      message: `Role permissions updated successfully (${updatedCount} member(s) affected)`,
+      roleName,
+      permissions,
+      membersAffected: updatedCount,
+    });
+  } catch (error) {
+    logger.error(`Update Role Permissions Error: ${error.message}`, { error });
+    sendError(res, 'Failed to update role permissions', 500);
   }
 };
 
