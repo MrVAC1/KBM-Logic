@@ -1,4 +1,5 @@
 import Task from '../models/Task.js';
+import Project, { ALL_PERMISSIONS } from '../models/Project.js';
 import { recalculateRisk } from '../services/riskEngine.js';
 import { sendSuccess, sendError } from '../utils/response.js';
 import logger from '../utils/logger.js';
@@ -13,10 +14,38 @@ export const getProjectTasks = async (req, res) => {
     const { projectId } = req.params;
 
     const tasks = await Task.find({ projectId })
-      .populate('assignees', 'displayName email avatar')
+      .populate({
+        path: 'assignees',
+        select: '_id displayName email avatar uid',
+        options: { lean: true }
+      })
+      .lean()
       .sort({ createdAt: -1 });
 
-    sendSuccess(res, tasks);
+    // Format tasks and ensure assignees are properly structured
+    const formattedTasks = tasks.map(task => {
+      return {
+        ...task,
+        assignees: (task.assignees || []).filter(Boolean).map(assignee => {
+          // If assignee is null/undefined, skip it
+          if (!assignee || typeof assignee !== 'object') {
+            return null;
+          }
+          
+          // Return formatted assignee object
+          return {
+            _id: assignee._id,
+            id: assignee._id,
+            displayName: assignee.displayName || assignee.email?.split('@')[0] || '',
+            email: assignee.email || '',
+            avatar: assignee.avatar || '',
+            uid: assignee.uid || '',
+          };
+        }).filter(Boolean) // Remove null entries
+      };
+    });
+
+    sendSuccess(res, formattedTasks);
   } catch (error) {
     logger.error(`Get Tasks Error: ${error.message}`, { error });
     sendError(res, 'Failed to fetch tasks', 500);
@@ -59,7 +88,30 @@ export const createTask = async (req, res) => {
     await recalculateRisk(task._id, projectId);
 
     const populatedTask = await Task.findById(task._id)
-      .populate('assignees', 'displayName email avatar');
+      .populate({
+        path: 'assignees',
+        select: '_id displayName email avatar uid',
+        options: { lean: true }
+      })
+      .lean();
+
+    // Format assignees properly
+    const formattedTask = {
+      ...populatedTask,
+      assignees: (populatedTask?.assignees || []).filter(Boolean).map(assignee => {
+        if (!assignee || typeof assignee !== 'object') {
+          return null;
+        }
+        return {
+          _id: assignee._id,
+          id: assignee._id,
+          displayName: assignee.displayName || assignee.email?.split('@')[0] || '',
+          email: assignee.email || '',
+          avatar: assignee.avatar || '',
+          uid: assignee.uid || '',
+        };
+      }).filter(Boolean)
+    };
 
     // Log MongoDB persistence
     await logDataOperation('create', 'tasks', task._id.toString(), req.dbUser._id, {
@@ -69,7 +121,7 @@ export const createTask = async (req, res) => {
     });
 
     sendSuccess(res, {
-      ...populatedTask.toObject(),
+      ...formattedTask,
       _persistedToMongo: true, // Flag indicating MongoDB persistence
     }, 201);
   } catch (error) {
@@ -99,7 +151,30 @@ export const updateTask = async (req, res) => {
     await recalculateRisk(task._id, task.projectId);
 
     const populatedTask = await Task.findById(task._id)
-      .populate('assignees', 'displayName email avatar');
+      .populate({
+        path: 'assignees',
+        select: '_id displayName email avatar uid',
+        options: { lean: true }
+      })
+      .lean();
+
+    // Format assignees properly
+    const formattedTask = {
+      ...populatedTask,
+      assignees: (populatedTask?.assignees || []).filter(Boolean).map(assignee => {
+        if (!assignee || typeof assignee !== 'object') {
+          return null;
+        }
+        return {
+          _id: assignee._id,
+          id: assignee._id,
+          displayName: assignee.displayName || assignee.email?.split('@')[0] || '',
+          email: assignee.email || '',
+          avatar: assignee.avatar || '',
+          uid: assignee.uid || '',
+        };
+      }).filter(Boolean)
+    };
 
     // Log MongoDB persistence
     await logDataOperation('update', 'tasks', task._id.toString(), req.dbUser._id, {
@@ -108,7 +183,7 @@ export const updateTask = async (req, res) => {
     });
 
     sendSuccess(res, {
-      ...populatedTask.toObject(),
+      ...formattedTask,
       _persistedToMongo: true,
     });
   } catch (error) {
@@ -120,19 +195,62 @@ export const updateTask = async (req, res) => {
 /**
  * Delete task
  * DELETE /api/tasks/:taskId
+ * 
+ * Security: 
+ * - Finds task to get projectId
+ * - Verifies user is owner or member of the project
+ * - Verifies user has can_delete_tasks permission OR is the project owner
+ * - Owner always has permission
  */
 export const deleteTask = async (req, res) => {
   try {
     const { taskId } = req.params;
+    const userId = req.dbUser._id;
 
-    const task = await Task.findByIdAndDelete(taskId);
+    // Find the task first to get projectId
+    const task = await Task.findById(taskId);
     if (!task) {
       return sendError(res, 'Task not found', 404);
     }
 
+    const projectId = task.projectId;
+
+    // Find the project
+    const project = await Project.findById(projectId);
+    if (!project || project.isDeleted) {
+      return sendError(res, 'Project not found', 404);
+    }
+
+    // Check if user is owner
+    const isOwner = project.ownerId.toString() === userId.toString();
+    
+    // Check if user is a member
+    const member = project.members.find(
+      m => m.userId.toString() === userId.toString()
+    );
+    
+    // Verify user is owner or member
+    if (!isOwner && !member) {
+      logger.warn(`User ${userId} attempted to delete task ${taskId} without project membership`);
+      return sendError(res, 'Access denied: Not a project member', 403);
+    }
+
+    // Verify user has can_delete_tasks permission (owners always have all permissions)
+    if (!isOwner) {
+      const permissions = Array.isArray(member?.permissions) ? member.permissions : [];
+      
+      if (!permissions.includes('can_delete_tasks')) {
+        logger.warn(`User ${userId} attempted to delete task ${taskId} without can_delete_tasks permission`);
+        return sendError(res, 'Access denied: Missing required permission (can_delete_tasks)', 403);
+      }
+    }
+
+    // All security checks passed - delete the task
+    await Task.findByIdAndDelete(taskId);
+
     // Log MongoDB persistence
-    await logDataOperation('delete', 'tasks', taskId, req.dbUser._id, {
-      projectId: task.projectId.toString(),
+    await logDataOperation('delete', 'tasks', taskId, userId, {
+      projectId: projectId.toString(),
     });
 
     sendSuccess(res, { 

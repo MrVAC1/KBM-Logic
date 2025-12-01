@@ -59,7 +59,8 @@ router.put('/projects/:projectId/members/:memberId/role', verifyToken, checkProj
 router.get('/projects/:projectId/tasks', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_view_tasks'), getProjectTasks);
 router.post('/projects/:projectId/tasks', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_create_tasks'), validate('createTask'), createTask);
 router.put('/tasks/:taskId', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_edit_tasks'), validate('updateTask'), updateTask);
-router.delete('/tasks/:taskId', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_delete_tasks'), deleteTask);
+// Note: deleteTask handles permission checking internally since it needs to get projectId from task
+router.delete('/tasks/:taskId', verifyToken, checkDatabaseConnection, deleteTask);
 router.post('/tasks/:taskId/start-timer', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_track_time'), startTimer);
 router.post('/tasks/:taskId/stop-timer', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_track_time'), stopTimer);
 

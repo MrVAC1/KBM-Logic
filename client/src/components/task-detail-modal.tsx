@@ -9,9 +9,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent } from "@/components/ui/card"
-import { Play, Pause, Clock, DollarSign, AlertTriangle, Users } from "lucide-react"
+import { Play, Pause, Clock, DollarSign, AlertTriangle, Users, Trash2 } from "lucide-react"
 import type { Task } from "@/lib/mock-data"
 import { mockUsers, mockCurrentUser } from "@/lib/mock-data"
+import { tasks as tasksAPI } from "@/services/api"
+import { useProject } from "@/contexts/ProjectContext"
+import { toast } from "sonner"
 
 interface TaskDetailModalProps {
   task: Task | any
@@ -20,16 +23,29 @@ interface TaskDetailModalProps {
   onUpdate?: () => void
 }
 
-export function TaskDetailModal({ task, open, onOpenChange }: TaskDetailModalProps) {
+export function TaskDetailModal({ task, open, onOpenChange, onUpdate }: TaskDetailModalProps) {
   const [viewMode, setViewMode] = useState<"manager" | "developer">("manager")
   const [isTracking, setIsTracking] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const { hasPermission } = useProject()
+  
+  // Check if user has permission to delete tasks
+  const canDelete = hasPermission('can_delete_tasks')
 
   // Defensive coding: Ensure arrays exist before accessing
   const taskAssignees = Array.isArray(task?.assignees) ? task.assignees : []
   const taskTimeTracking = Array.isArray(task?.timeTracking) ? task.timeTracking : []
 
   const hasTimeTrackingPermission = mockCurrentUser?.permissions?.includes("can_track_time") || false
-  const assignedUsers = mockUsers.filter((u) => taskAssignees.includes(u.id))
+  // Use populated assignee data directly from backend
+  const assignedUsers = taskAssignees.filter(Boolean).map((assignee: any) => ({
+    id: assignee._id || assignee.id,
+    displayName: assignee.displayName || assignee.name || assignee.email?.split('@')[0] || 'Deleted User',
+    email: assignee.email || '',
+    avatar: assignee.avatar || assignee.photoURL || '',
+    nickname: assignee.displayName || assignee.name || assignee.email?.split('@')[0] || 'Deleted User',
+  }))
   const currentUserTracking = taskTimeTracking.find((t) => t?.userId === mockCurrentUser?.id)
 
   const totalHours = taskTimeTracking.reduce((sum, t) => sum + (t?.totalHours || 0), 0)
@@ -41,6 +57,34 @@ export function TaskDetailModal({ task, open, onOpenChange }: TaskDetailModalPro
     if (score >= 10) return "text-warning"
     if (score >= 5) return "text-info"
     return "text-success"
+  }
+
+  // Handle task deletion
+  const handleDelete = async () => {
+    if (!task?._id && !task?.id) {
+      toast.error('Task ID not found')
+      return
+    }
+
+    setIsDeleting(true)
+    try {
+      const taskId = task._id || task.id
+      await tasksAPI.delete(taskId)
+      
+      toast.success('Task deleted successfully')
+      
+      // Close modal and refresh tasks
+      onOpenChange(false)
+      if (onUpdate) {
+        onUpdate()
+      }
+    } catch (error: any) {
+      console.error('Delete task error:', error)
+      toast.error(error.response?.data?.message || 'Failed to delete task')
+    } finally {
+      setIsDeleting(false)
+      setShowDeleteConfirm(false)
+    }
   }
 
   return (
@@ -102,14 +146,14 @@ export function TaskDetailModal({ task, open, onOpenChange }: TaskDetailModalPro
               {assignedUsers.length > 0 ? (
                 assignedUsers.map((user) => (
                   <div
-                    key={user.id}
+                    key={user.id || user.email || Math.random()}
                     className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2"
                   >
                     <Avatar className="h-6 w-6">
-                      <AvatarImage src={user.avatar || "/placeholder.svg"} alt={user.nickname} />
-                      <AvatarFallback className="text-xs">{user.nickname.slice(0, 2).toUpperCase()}</AvatarFallback>
+                      <AvatarImage src={user.avatar || "/placeholder.svg"} alt={user.displayName || user.nickname} />
+                      <AvatarFallback className="text-xs">{(user.displayName || user.nickname || 'U').slice(0, 2).toUpperCase()}</AvatarFallback>
                     </Avatar>
-                    <span className="text-sm font-medium">{user.nickname}</span>
+                    <span className="text-sm font-medium">{user.displayName || user.nickname}</span>
                   </div>
                 ))
               ) : task.department ? (
@@ -279,9 +323,58 @@ export function TaskDetailModal({ task, open, onOpenChange }: TaskDetailModalPro
           </div>
         </div>
 
-        <div className="flex justify-end">
+        <div className={`flex items-center ${canDelete ? 'justify-between' : 'justify-end'}`}>
+          {/* Delete Button (left side) - only show if user has permission */}
+          {canDelete && (
+            <Button
+              variant="destructive"
+              onClick={() => setShowDeleteConfirm(true)}
+              disabled={isDeleting}
+              className="flex items-center gap-2"
+            >
+              <Trash2 className="h-4 w-4" />
+              {isDeleting ? "Deleting..." : "Delete Task"}
+            </Button>
+          )}
+          
+          {/* Close Button (right side) */}
           <Button onClick={() => onOpenChange(false)}>Close</Button>
         </div>
+        
+        {/* Delete Confirmation Dialog */}
+        <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Confirm Delete</DialogTitle>
+              <DialogDescription>
+                Are you sure you want to delete this task? This action cannot be undone.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-4">
+              <p className="text-sm text-muted-foreground">
+                Task: <span className="font-medium">{task?.title || "Untitled Task"}</span>
+              </p>
+            </div>
+            <div className="flex justify-end gap-3">
+              <Button
+                variant="outline"
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={isDeleting}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleDelete}
+                disabled={isDeleting}
+                className="flex items-center gap-2"
+              >
+                <Trash2 className="h-4 w-4" />
+                {isDeleting ? "Deleting..." : "Delete"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </DialogContent>
     </Dialog>
   )

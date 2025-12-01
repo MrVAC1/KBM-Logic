@@ -241,7 +241,12 @@ export default function KanbanPage() {
     if (!user?.uid) return false
     const assignees = Array.isArray(task?.assignees) ? task.assignees : []
     return assignees.some((assignee: any) => {
-      const assigneeId = assignee?.userId || assignee?.id || assignee
+      // Check if assignee has uid field (populated from backend)
+      if (assignee?.uid) {
+        return assignee.uid.toString() === user.uid?.toString()
+      }
+      // Fallback: check by ID (for backward compatibility)
+      const assigneeId = assignee?.userId || assignee?._id || assignee?.id || assignee
       return assigneeId?.toString() === user.uid?.toString()
     })
   }
@@ -491,23 +496,22 @@ export default function KanbanPage() {
                                 // Handle User assignment
                                 if (Array.isArray(task.assignees) && task.assignees.length > 0) {
                                   const firstAssignee = task.assignees[0]
-                                  const assigneeId = firstAssignee?.userId || firstAssignee?.id || firstAssignee
-                                  const assigneeUser = Array.isArray(currentProject?.members) 
-                                    ? currentProject.members.find((m: any) => 
-                                        (m.userId?._id || m.userId?.id || m.userId)?.toString() === assigneeId?.toString()
-                                      )
-                                    : null
                                   
-                                  const displayName = assigneeUser?.userId?.displayName || 
-                                                     assigneeUser?.userId?.nickname || 
-                                                     assigneeUser?.displayName ||
-                                                     'Unknown'
+                                  // Use populated assignee data directly from backend
+                                  const displayName = firstAssignee?.displayName || 
+                                                     firstAssignee?.name ||
+                                                     firstAssignee?.email?.split('@')[0] || 
+                                                     'Deleted User'
+                                  
+                                  const avatarUrl = firstAssignee?.avatar || 
+                                                   firstAssignee?.photoURL || 
+                                                   "/placeholder.svg"
                                   
                                   return (
                                     <>
                                       <Avatar className="h-6 w-6 border border-border flex-shrink-0">
                                         <AvatarImage
-                                          src={assigneeUser?.userId?.photoURL || assigneeUser?.userId?.avatar || "/placeholder.svg"}
+                                          src={avatarUrl}
                                           alt={displayName}
                                         />
                                         <AvatarFallback className="text-[10px] font-medium border border-border">
