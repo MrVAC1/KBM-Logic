@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -61,6 +61,22 @@ export function CreateTaskModal({ open, onOpenChange, onSuccess, projectId }: Cr
   const canSelectMultipleUsers = complexity === "medium" || complexity === "high"
   const canSelectDepartment = complexity === "high"
 
+  // Reset form when modal closes
+  useEffect(() => {
+    if (!open) {
+      // Reset all form states when modal closes
+      setTitle("")
+      setDescription("")
+      setComplexity("low")
+      setSelectedUsers([])
+      setSelectedDepartment("")
+      setEveryoneCanClaim(false)
+      setDeadline(undefined)
+      setEstimatedCost("")
+      setIsSubmitting(false)
+    }
+  }, [open])
+
   const handleComplexityChange = (value: "low" | "medium" | "high") => {
     setComplexity(value)
     // Reset assignments based on complexity
@@ -74,6 +90,12 @@ export function CreateTaskModal({ open, onOpenChange, onSuccess, projectId }: Cr
 
   const toggleUser = (userId: string) => {
     const userIdStr = userId.toString()
+    
+    // If selecting a user, turn off "Everyone" toggle
+    if (everyoneCanClaim) {
+      setEveryoneCanClaim(false)
+    }
+    
     if (complexity === "low") {
       setSelectedUsers([userIdStr])
     } else {
@@ -85,6 +107,20 @@ export function CreateTaskModal({ open, onOpenChange, onSuccess, projectId }: Cr
           return [...prev, userIdStr]
         }
       })
+    }
+  }
+
+  const removeUser = (userId: string, e: React.MouseEvent) => {
+    e.stopPropagation() // Prevent triggering the button's onClick
+    const userIdStr = userId.toString()
+    setSelectedUsers((prev) => prev.filter((id) => id.toString() !== userIdStr))
+  }
+
+  const handleEveryoneToggle = (checked: boolean) => {
+    setEveryoneCanClaim(checked)
+    // If "Everyone" is enabled, clear specific assignees
+    if (checked) {
+      setSelectedUsers([])
     }
   }
 
@@ -112,11 +148,18 @@ export function CreateTaskModal({ open, onOpenChange, onSuccess, projectId }: Cr
       // Map selected user IDs (they should be MongoDB ObjectIds)
       const assigneeIds = selectedUsers.filter(Boolean)
 
+      // Smart Status Assignment:
+      // - If task has specific assignees AND "Everyone" is false -> "In Progress"
+      // - If assigned to "Everyone" (claimable) OR no assignees -> "Todo"
+      const initialStatus = (assigneeIds.length > 0 && !everyoneCanClaim) 
+        ? 'In Progress' 
+        : 'Todo'
+
       // Build task payload
       const taskData: any = {
         title: title.trim(),
         description: description.trim(),
-        status: 'Todo', // Default status matching column name
+        status: initialStatus,
         complexity: complexityMap[complexity],
         assignees: assigneeIds,
         deadline: deadline,
@@ -141,17 +184,7 @@ export function CreateTaskModal({ open, onOpenChange, onSuccess, projectId }: Cr
 
       toast.success('Task created successfully')
 
-      // Reset form
-      setTitle("")
-      setDescription("")
-      setComplexity("low")
-      setSelectedUsers([])
-      setSelectedDepartment("")
-      setEveryoneCanClaim(false)
-      setDeadline(undefined)
-      setEstimatedCost("")
-
-      // Close modal
+      // Close modal - form will reset via useEffect when open becomes false
       onOpenChange(false)
 
       // Refresh tasks list immediately to show new task
@@ -292,7 +325,13 @@ export function CreateTaskModal({ open, onOpenChange, onSuccess, projectId }: Cr
                           <AvatarFallback className="text-xs">{user.nickname.slice(0, 2).toUpperCase()}</AvatarFallback>
                         </Avatar>
                         <span>{user.nickname}</span>
-                        {isSelected && <X className="h-3 w-3" />}
+                        {isSelected && (
+                          <X 
+                            className="h-3 w-3" 
+                            onClick={(e) => removeUser(userId, e)}
+                            onPointerDown={(e) => e.stopPropagation()}
+                          />
+                        )}
                       </button>
                     )
                   })}
@@ -310,11 +349,7 @@ export function CreateTaskModal({ open, onOpenChange, onSuccess, projectId }: Cr
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">No department</SelectItem>
-                    {mockDepartments.map((dept) => (
-                      <SelectItem key={dept.id} value={dept.name}>
-                        {dept.name}
-                      </SelectItem>
-                    ))}
+                    {/* TODO: Implement department selection when backend supports it */}
                   </SelectContent>
                 </Select>
               </div>
@@ -327,7 +362,7 @@ export function CreateTaskModal({ open, onOpenChange, onSuccess, projectId }: Cr
               <Label htmlFor="everyone-claim">Everyone Can Claim</Label>
               <p className="text-xs text-muted-foreground">Allow any team member to claim this task</p>
             </div>
-            <Switch id="everyone-claim" checked={everyoneCanClaim} onCheckedChange={setEveryoneCanClaim} />
+            <Switch id="everyone-claim" checked={everyoneCanClaim} onCheckedChange={handleEveryoneToggle} />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -344,7 +379,18 @@ export function CreateTaskModal({ open, onOpenChange, onSuccess, projectId }: Cr
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar mode="single" selected={deadline} onSelect={setDeadline} initialFocus />
+                  <Calendar 
+                    mode="single" 
+                    selected={deadline} 
+                    onSelect={setDeadline} 
+                    initialFocus
+                    disabled={(date) => {
+                      // Disable all dates before today
+                      const today = new Date()
+                      today.setHours(0, 0, 0, 0)
+                      return date < today
+                    }}
+                  />
                 </PopoverContent>
               </Popover>
             </div>
@@ -363,7 +409,13 @@ export function CreateTaskModal({ open, onOpenChange, onSuccess, projectId }: Cr
         </div>
 
         <div className="flex justify-end gap-3">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button 
+            variant="outline" 
+            onClick={() => {
+              onOpenChange(false)
+              // Form will reset via useEffect when open becomes false
+            }}
+          >
             Cancel
           </Button>
           <Button onClick={handleCreate} disabled={!title || !description || !deadline || isSubmitting || !actualProjectId}>

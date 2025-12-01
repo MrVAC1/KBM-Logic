@@ -8,8 +8,9 @@ export interface CalendarProps {
   className?: string
   selected?: Date
   onSelect?: (date: Date | undefined) => void
-  disabled?: boolean
+  disabled?: boolean | ((date: Date) => boolean)
   mode?: 'single' | 'range'
+  initialFocus?: boolean
 }
 
 function Calendar({
@@ -50,9 +51,26 @@ function Calendar({
   }
 
   const handleDayClick = (day: number) => {
-    if (disabled) return
     const newDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day)
+    
+    // Check if date is disabled
+    if (typeof disabled === 'function' && disabled(newDate)) {
+      return
+    }
+    if (typeof disabled === 'boolean' && disabled) {
+      return
+    }
+    
     onSelect?.(newDate)
+  }
+
+  const isDateDisabled = (day: number) => {
+    const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day)
+    
+    if (typeof disabled === 'function') {
+      return disabled(date)
+    }
+    return disabled === true
   }
 
   const isSelected = (day: number) => {
@@ -124,11 +142,12 @@ function Calendar({
                 variant={isSelected(day) ? 'default' : 'ghost'}
                 size="icon"
                 onClick={() => handleDayClick(day)}
-                disabled={disabled}
+                disabled={isDateDisabled(day)}
                 className={cn(
                   'h-8 w-8 p-0 font-normal',
                   isToday(day) && !isSelected(day) && 'bg-accent text-accent-foreground',
-                  isSelected(day) && 'bg-primary text-primary-foreground'
+                  isSelected(day) && 'bg-primary text-primary-foreground',
+                  isDateDisabled(day) && 'opacity-50 cursor-not-allowed'
                 )}
               >
                 {day}
