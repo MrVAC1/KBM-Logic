@@ -1220,7 +1220,7 @@ export const getProjectMembers = async (req, res) => {
     // Get all members with populated user data
     const memberIds = project.members.map(m => m.userId);
     const users = await User.find({ _id: { $in: memberIds } })
-      .select('_id uid email displayName avatar')
+      .select('_id uid email displayName avatar monthlySalary')
       .lean();
 
     // Get active task counts for each member
@@ -1255,6 +1255,7 @@ export const getProjectMembers = async (req, res) => {
         roles: memberRoles, // Multiple roles support
         permissions: member.permissions || [],
         hourlyRate: member.hourlyRate || 0,
+        monthlySalary: user?.monthlySalary || 0, // Include monthly salary
         joinedAt: member.joinedAt || new Date(),
         activeTaskCount: activeTaskCounts[member.userId.toString()] || 0,
         isOwner,

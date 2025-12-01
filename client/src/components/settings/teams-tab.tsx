@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -15,8 +16,8 @@ import {
   TableRow 
 } from "@/components/ui/table"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
-import { Plus, Users, Trash2, Shield, Ban, UserCheck, Settings2, UserCog } from "lucide-react"
-import { projects as projectsAPI } from "@/services/api"
+import { Plus, Users, Trash2, Shield, Ban, UserCheck, Settings2, UserCog, Loader2, Check } from "lucide-react"
+import { projects as projectsAPI, users as usersAPI } from "@/services/api"
 import { useProject } from "@/contexts/ProjectContext"
 import { toast } from "sonner"
 import { format } from "date-fns"
@@ -46,6 +47,7 @@ interface ProjectMember {
   joinedAt: string
   activeTaskCount: number
   isOwner: boolean
+  monthlySalary?: number
 }
 
 interface Role {
@@ -97,6 +99,12 @@ export function TeamsTab() {
 
   const canManageSettings = hasPermission('can_manage_settings')
   const canManageRoles = hasPermission('can_manage_roles')
+  const canManageSalaries = hasPermission('can_manage_salaries')
+
+  // Salary editing state
+  const [editingSalaryUserId, setEditingSalaryUserId] = useState<string | null>(null)
+  const [salaryValues, setSalaryValues] = useState<Record<string, string>>({})
+  const [savingSalaryUserId, setSavingSalaryUserId] = useState<string | null>(null)
 
   // Fetch departments
   const fetchDepartments = useCallback(async () => {
@@ -130,7 +138,17 @@ export function TeamsTab() {
       setMembersLoading(true)
       const response = await projectsAPI.getMembers(projectId)
       const data = response.data?.data || response.data
-      setMembers(data.members || [])
+      const membersList = data.members || []
+      setMembers(membersList)
+      
+      // Initialize salary values from fetched members
+      const initialSalaryValues: Record<string, string> = {}
+      membersList.forEach((member: ProjectMember) => {
+        if (member.monthlySalary !== undefined && member.monthlySalary !== null) {
+          initialSalaryValues[member.userId] = member.monthlySalary.toString()
+        }
+      })
+      setSalaryValues(initialSalaryValues)
     } catch (error: any) {
       console.error('Failed to fetch members:', error)
       toast.error(error.response?.data?.message || 'Failed to load members')
@@ -240,6 +258,92 @@ export function TeamsTab() {
       toast.error(error.response?.data?.message || 'Failed to unblock user')
     } finally {
       setUnblockingUserId(null)
+    }
+  }
+
+  // Handle salary input change
+  const handleSalaryChange = (userId: string, value: string) => {
+    setSalaryValues(prev => ({
+      ...prev,
+      [userId]: value
+    }))
+    setEditingSalaryUserId(userId)
+  }
+
+  // Handle saving salary
+  const handleSaveSalary = async (userId: string) => {
+    if (!projectId || !canManageSalaries) return
+
+    const salaryValue = salaryValues[userId]
+    if (salaryValue === undefined || salaryValue === '') {
+      // Reset to original value if empty
+      const member = members.find(m => m.userId === userId)
+      if (member?.monthlySalary !== undefined) {
+        setSalaryValues(prev => ({
+          ...prev,
+          [userId]: member.monthlySalary?.toString() || '0'
+        }))
+      }
+      setEditingSalaryUserId(null)
+      return
+    }
+
+    const salaryNum = parseFloat(salaryValue)
+    if (isNaN(salaryNum) || salaryNum < 0) {
+      toast.error('Salary must be a valid non-negative number')
+      // Reset to original value
+      const member = members.find(m => m.userId === userId)
+      if (member?.monthlySalary !== undefined) {
+        setSalaryValues(prev => ({
+          ...prev,
+          [userId]: member.monthlySalary?.toString() || '0'
+        }))
+      }
+      setEditingSalaryUserId(null)
+      return
+    }
+
+    setSavingSalaryUserId(userId)
+
+    try {
+      await usersAPI.updateSalary(projectId, userId, salaryNum)
+      toast.success('Salary updated successfully')
+      
+      // Update local state optimistically
+      setMembers(prevMembers =>
+        prevMembers.map(m =>
+          m.userId === userId ? { ...m, monthlySalary: salaryNum } : m
+        )
+      )
+      
+      setEditingSalaryUserId(null)
+    } catch (error: any) {
+      console.error('Failed to update salary:', error)
+      toast.error(error.response?.data?.message || 'Failed to update salary')
+      
+      // Revert to original value on error
+      const member = members.find(m => m.userId === userId)
+      if (member?.monthlySalary !== undefined) {
+        setSalaryValues(prev => ({
+          ...prev,
+          [userId]: member.monthlySalary?.toString() || '0'
+        }))
+      }
+    } finally {
+      setSavingSalaryUserId(null)
+    }
+  }
+
+  // Handle salary input blur (save on blur if changed)
+  const handleSalaryBlur = (userId: string) => {
+    const member = members.find(m => m.userId === userId)
+    const currentValue = salaryValues[userId]
+    const originalValue = member?.monthlySalary?.toString() || '0'
+    
+    if (currentValue !== originalValue) {
+      handleSaveSalary(userId)
+    } else {
+      setEditingSalaryUserId(null)
     }
   }
 
@@ -466,6 +570,7 @@ export function TeamsTab() {
                       <TableHead>Role</TableHead>
                       <TableHead>Joined</TableHead>
                       <TableHead>Active Tasks</TableHead>
+                      {canManageSalaries && <TableHead>Salary</TableHead>}
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -528,6 +633,67 @@ export function TeamsTab() {
                             {member.activeTaskCount} active
                           </Badge>
                         </TableCell>
+                        {canManageSalaries && (
+                          <TableCell>
+                            <div className="flex items-center gap-2 w-32">
+                              {savingSalaryUserId === member.userId ? (
+                                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                              ) : editingSalaryUserId === member.userId ? (
+                                <div className="flex items-center gap-1 flex-1">
+                                  <Input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    value={salaryValues[member.userId] || member.monthlySalary?.toString() || '0'}
+                                    onChange={(e) => handleSalaryChange(member.userId, e.target.value)}
+                                    onBlur={() => handleSalaryBlur(member.userId)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') {
+                                        handleSaveSalary(member.userId)
+                                      } else if (e.key === 'Escape') {
+                                        // Reset to original value
+                                        const originalValue = member.monthlySalary?.toString() || '0'
+                                        setSalaryValues(prev => ({
+                                          ...prev,
+                                          [member.userId]: originalValue
+                                        }))
+                                        setEditingSalaryUserId(null)
+                                      }
+                                    }}
+                                    className="h-8 text-sm"
+                                    autoFocus
+                                  />
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-8 w-8 p-0"
+                                    onClick={() => handleSaveSalary(member.userId)}
+                                  >
+                                    <Check className="h-4 w-4 text-green-600" />
+                                  </Button>
+                                </div>
+                              ) : (
+                                <div
+                                  className="flex items-center gap-2 cursor-pointer hover:bg-muted/50 rounded px-2 py-1 transition-colors flex-1"
+                                  onClick={() => {
+                                    setEditingSalaryUserId(member.userId)
+                                    setSalaryValues(prev => ({
+                                      ...prev,
+                                      [member.userId]: member.monthlySalary?.toString() || '0'
+                                    }))
+                                  }}
+                                >
+                                  <span className="text-sm text-muted-foreground">
+                                    ${(member.monthlySalary || 0).toLocaleString('en-US', {
+                                      minimumFractionDigits: 2,
+                                      maximumFractionDigits: 2
+                                    })}/mo
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          </TableCell>
+                        )}
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-2">
                             {canManageRoles && !member.isOwner && (

@@ -132,6 +132,12 @@ export const financials = {
   getTransactions: (projectId) => apiClient.get(`/projects/${projectId}/transactions`),
 };
 
+export const users = {
+  getById: (userId) => apiClient.get(`/users/${userId}`),
+  updateSalary: (projectId, userId, monthlySalary) => 
+    apiClient.put(`/projects/${projectId}/users/${userId}/salary`, { monthlySalary }),
+};
+
 export default apiClient;
 
 

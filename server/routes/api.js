@@ -55,6 +55,12 @@ import {
   getTransactions,
 } from '../controllers/financialController.js';
 
+// Users
+import {
+  updateUserSalary,
+  getUserDetails,
+} from '../controllers/userController.js';
+
 const router = express.Router();
 
 // Auth routes
@@ -104,6 +110,10 @@ router.post('/tasks/:taskId/stop-timer', verifyToken, checkDatabaseConnection, c
 router.get('/projects/:projectId/stats', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_view_financial'), getDashboardStats);
 router.post('/projects/:projectId/transactions', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_edit_budget'), validate('createTransaction'), createTransaction);
 router.get('/projects/:projectId/transactions', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_view_financial'), getTransactions);
+
+// User routes (salary management requires project context for permission checks)
+router.get('/users/:userId', verifyToken, checkDatabaseConnection, getUserDetails);
+router.put('/projects/:projectId/users/:userId/salary', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_manage_salaries'), updateUserSalary);
 
 export default router;
 
