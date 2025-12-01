@@ -200,15 +200,123 @@ export default function KanbanPage() {
     return filtered
   }
 
+  // Helper function to get MongoDB user ID from project members
+  const getCurrentUserMongoId = (): string | null => {
+    if (!user?.uid) {
+      console.warn('⚠️ No user UID available')
+      return null
+    }
+    
+    if (!currentProject?.members) {
+      console.warn('⚠️ No project members available', { currentProject })
+      return null
+    }
+    
+    console.log('🔍 Searching for user in members:', {
+      userUid: user.uid,
+      membersCount: currentProject.members.length,
+      members: currentProject.members.map((m: any) => ({
+        hasUserId: !!m.userId,
+        userIdType: typeof m.userId,
+        uid: m.uid,
+        userIdUid: m.userId?.uid,
+        _id: m._id,
+        userIdId: m.userId?._id || m.userId?.id,
+      }))
+    })
+    
+    // Find current user in project members by matching Firebase UID
+    const currentMember = currentProject.members.find((member: any) => {
+      // 1. Check if member has uid field directly (from getProjectMembers endpoint)
+      if (member.uid === user.uid) {
+        console.log('✅ Found member by direct uid field')
+        return true
+      }
+      
+      const memberUser = member.userId
+      if (!memberUser) return false
+      
+      // 2. If userId is populated object with uid
+      if (typeof memberUser === 'object' && memberUser.uid === user.uid) {
+        console.log('✅ Found member by userId.uid')
+        return true
+      }
+      
+      // 3. Check if userId is populated with email match (fallback)
+      if (typeof memberUser === 'object' && memberUser.email === user.email) {
+        console.log('✅ Found member by email match')
+        return true
+      }
+      
+      return false
+    })
+    
+    if (!currentMember) {
+      console.warn('❌ Current user not found in project members')
+      return null
+    }
+    
+    console.log('📋 Found member:', {
+      member: currentMember,
+      userId: currentMember.userId,
+      userIdType: typeof currentMember.userId,
+      _id: currentMember._id,
+    })
+    
+    // Extract MongoDB user ID from the member
+    // From getProjectMembers: userId is the MongoDB ObjectId string, _id is the member record ID
+    // From getProjectDetails: userId might be populated object or ObjectId
+    const memberUserId = currentMember.userId
+    
+    // Priority 1: userId is already the MongoDB ID string (from getProjectMembers)
+    if (typeof memberUserId === 'string') {
+      // Check if it looks like a MongoDB ObjectId (24 hex characters)
+      if (memberUserId.length === 24 && /^[0-9a-fA-F]{24}$/.test(memberUserId)) {
+        console.log('✅ Using userId string as MongoDB ID:', memberUserId)
+        return memberUserId
+      }
+    }
+    
+    // Priority 2: Check if userId is populated object with _id (from getProjectDetails)
+    if (typeof memberUserId === 'object' && memberUserId !== null) {
+      const mongoId = memberUserId._id || memberUserId.id
+      if (mongoId) {
+        const idString = mongoId.toString()
+        console.log('✅ Extracted MongoDB ID from userId object:', idString)
+        return idString
+      }
+    }
+    
+    // Priority 3: Fallback - if member._id exists and looks like ObjectId, use it
+    // (but this should be the member record ID, not user ID - only as last resort)
+    if (currentMember._id) {
+      const memberRecordId = currentMember._id.toString()
+      if (memberRecordId.length === 24 && /^[0-9a-fA-F]{24}$/.test(memberRecordId)) {
+        console.warn('⚠️ Using member._id as fallback (may not be correct):', memberRecordId)
+        return memberRecordId
+      }
+    }
+    
+    console.error('❌ Could not extract MongoDB ID from member:', currentMember)
+    return null
+  }
+
   // State Machine Actions
   const handleClaimTask = async (task: any) => {
     if (!projectId || !user?.uid) return
+    
+    // Get MongoDB user ID instead of Firebase UID
+    const mongoUserId = getCurrentUserMongoId()
+    if (!mongoUserId) {
+      toast.error('Unable to find your user ID. Please refresh the page.')
+      return
+    }
     
     try {
       await tasksAPI.update(task._id || task.id, {
         projectId: projectId, // Required by backend middleware
         status: 'In Progress',
-        assignees: [user.uid],
+        assignees: [mongoUserId], // Use MongoDB ObjectId instead of Firebase UID
       })
       toast.success('Task claimed and moved to In Progress')
       loadTasks()

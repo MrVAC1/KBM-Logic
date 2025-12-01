@@ -140,6 +140,27 @@ const projectSchema = new mongoose.Schema({
     },
   }],
   members: [memberSchema],
+  // Work schedule configuration
+  workSchedule: {
+    workingDaysPerWeek: {
+      type: Number,
+      min: 1,
+      max: 7,
+      default: 5,
+    },
+    daysOffPerWeek: {
+      type: Number,
+      min: 0,
+      max: 6,
+      default: 2,
+    },
+    hoursPerDay: {
+      type: Number,
+      min: 1,
+      max: 24,
+      default: 8,
+    },
+  },
   // Departments array for organizational groups
   departments: [{
     _id: {

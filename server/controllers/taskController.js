@@ -76,7 +76,10 @@ export const createTask = async (req, res) => {
       status: status,
       complexity: taskData.complexity || 'Med',
       assignees: assignees,
+      startDate: taskData.startDate || undefined,
       deadline: taskData.deadline || undefined,
+      estimateHours: taskData.estimateHours !== undefined ? parseFloat(taskData.estimateHours) || 0 : 0,
+      plannedValue: taskData.plannedValue || 0,
       risk: taskData.risk || {
         probability: 1,
         impact: 1,

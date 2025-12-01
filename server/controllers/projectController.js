@@ -418,6 +418,11 @@ export const getProjectDetails = async (req, res) => {
       description: project.description,
       inviteCode: project.inviteCode,
       fixedCosts: project.fixedCosts,
+      workSchedule: project.workSchedule || {
+        workingDaysPerWeek: 5,
+        daysOffPerWeek: 2,
+        hoursPerDay: 8,
+      },
       roles: extractRoleDefinitions(project.members),
       members: project.members, // Now populated with user details
       createdAt: project.createdAt,
@@ -659,6 +664,11 @@ export const updateProject = async (req, res) => {
       name: project.name,
       description: project.description,
       fixedCosts: project.fixedCosts,
+      workSchedule: project.workSchedule || {
+        workingDaysPerWeek: 5,
+        daysOffPerWeek: 2,
+        hoursPerDay: 8,
+      },
     });
   } catch (error) {
     logger.error(`Update Project Error: ${error.message}`, { error });

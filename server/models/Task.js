@@ -80,8 +80,24 @@ const taskSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
   }],
+  startDate: {
+    type: Date,
+  },
   deadline: {
     type: Date,
+  },
+  // Estimated hours required to complete the task
+  estimateHours: {
+    type: Number,
+    required: false,
+    min: 0,
+    default: 0,
+  },
+  // Planned Value (PV) - automatically calculated based on estimateHours and assignee daily rates
+  plannedValue: {
+    type: Number,
+    default: 0,
+    min: 0,
   },
   timeLogs: [timeLogSchema],
   risk: riskSchema,

@@ -27,6 +27,11 @@ const schemas = {
         currency: Joi.string(),
       })
     ),
+    workSchedule: Joi.object({
+      workingDaysPerWeek: Joi.number().min(1).max(7),
+      daysOffPerWeek: Joi.number().min(0).max(6),
+      hoursPerDay: Joi.number().min(1).max(24),
+    }),
   }).min(1),
 
   createTask: Joi.object({
@@ -36,7 +41,10 @@ const schemas = {
     priority: Joi.string().valid('Low', 'Medium', 'High', 'Critical').default('Medium'),
     complexity: Joi.string().valid('Low', 'Med', 'High').default('Med'),
     assignees: Joi.array().items(Joi.string().hex().length(24)).default([]),
+    startDate: Joi.date().allow(null),
     deadline: Joi.date().allow(null),
+    estimateHours: Joi.number().min(0).default(0),
+    plannedValue: Joi.number().min(0).default(0),
     risk: Joi.object({
       probability: Joi.number().min(1).max(5).default(1),
       impact: Joi.number().min(1).max(5).default(1),
@@ -50,7 +58,10 @@ const schemas = {
     priority: Joi.string().valid('Low', 'Medium', 'High', 'Critical'),
     complexity: Joi.string().valid('Low', 'Med', 'High'),
     assignees: Joi.array().items(Joi.string().hex().length(24)),
+    startDate: Joi.date().allow(null),
     deadline: Joi.date().allow(null),
+    estimateHours: Joi.number().min(0),
+    plannedValue: Joi.number().min(0),
     risk: Joi.object({
       probability: Joi.number().min(1).max(5),
       impact: Joi.number().min(1).max(5),
