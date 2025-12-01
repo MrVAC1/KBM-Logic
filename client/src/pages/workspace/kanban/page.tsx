@@ -25,10 +25,13 @@ const columns = [
 ]
 
 export default function KanbanPage() {
-  const [searchParams] = useSearchParams()
-  const projectId = searchParams.get('project')
-  const { currentProject, hasPermission, getUserRole } = useProject()
+  const { currentProject, hasPermission, getUserRole, loading: projectLoading } = useProject()
   const { user } = useAuth()
+  
+  // Get projectId from currentProject (workspace context) or URL params as fallback
+  const [searchParams] = useSearchParams()
+  const projectIdFromUrl = searchParams.get('project')
+  const projectId = currentProject?.id || currentProject?._id || projectIdFromUrl
   
   const [tasks, setTasks] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
@@ -42,20 +45,87 @@ export default function KanbanPage() {
   // Load tasks from API
   const loadTasks = useCallback(async () => {
     if (!projectId) {
+      console.log('⚠️ No projectId available, skipping task load')
       setTasks([])
       return
     }
     
+    console.log('📋 Loading tasks for project:', projectId)
+    
     setLoading(true)
     try {
       const response = await tasksAPI.getByProject(projectId)
-      // Use safe utility to extract array from response
-      const tasksData = extractArrayFromResponse<any>(response)
-      // CRITICAL: Always set an array, never null/undefined
-      setTasks(safeArray(tasksData))
+      
+      // Debug: Log response structure
+      console.log('🔍 Tasks API Response:', {
+        hasData: !!response.data,
+        dataType: typeof response.data,
+        isArray: Array.isArray(response.data),
+        hasNestedData: !!response.data?.data,
+        nestedDataType: typeof response.data?.data,
+        nestedIsArray: Array.isArray(response.data?.data),
+      })
+      
+      // Axios response structure: response.data = { success: true, data: tasks }
+      // Extract the nested data array
+      let tasksData = null
+      
+      // Try multiple extraction methods
+      if (Array.isArray(response.data)) {
+        // Direct array
+        tasksData = response.data
+      } else if (Array.isArray(response.data?.data)) {
+        // Nested: { success: true, data: [...] }
+        tasksData = response.data.data
+      } else {
+        // Use utility function as fallback
+        tasksData = extractArrayFromResponse<any>(response.data || response)
+      }
+      
+      // Ensure we have an array
+      const validTasks = safeArray(tasksData)
+      
+      console.log('✅ Extracted tasks:', validTasks.length, 'items')
+      if (validTasks.length > 0) {
+        console.log('📋 Sample task:', {
+          id: validTasks[0]._id || validTasks[0].id,
+          title: validTasks[0].title,
+          status: validTasks[0].status,
+          assignees: validTasks[0].assignees,
+        })
+        // Log status distribution
+        const statusCounts = validTasks.reduce((acc: any, task: any) => {
+          const status = task.status || 'Unknown'
+          acc[status] = (acc[status] || 0) + 1
+          return acc
+        }, {})
+        console.log('📊 Task status distribution:', statusCounts)
+      }
+      
+      // Normalize task properties (ensure id and status exist)
+      const normalizedTasks = validTasks.map((task: any) => {
+        // Ensure status matches one of the valid column statuses
+        const validStatuses = ['Todo', 'In Progress', 'Review', 'Done']
+        const currentStatus = task.status || 'Todo'
+        const normalizedStatus = validStatuses.includes(currentStatus) ? currentStatus : 'Todo'
+        
+        return {
+          ...task,
+          id: task.id || task._id,
+          _id: task._id || task.id,
+          status: normalizedStatus,
+        }
+      })
+      
+      setTasks(normalizedTasks)
     } catch (error: any) {
       console.error('❌ Failed to load tasks:', error)
-      toast.error('Failed to load tasks')
+      console.error('❌ Error details:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+      })
+      toast.error(error.response?.data?.message || 'Failed to load tasks')
       // CRITICAL: Always set empty array on error
       setTasks([])
     } finally {
@@ -64,8 +134,14 @@ export default function KanbanPage() {
   }, [projectId])
 
   useEffect(() => {
-    loadTasks()
-  }, [loadTasks])
+    // Wait for currentProject to be loaded before fetching tasks
+    if (currentProject && projectId) {
+      loadTasks()
+    } else if (!currentProject) {
+      // Project not loaded yet, clear tasks
+      setTasks([])
+    }
+  }, [loadTasks, currentProject, projectId])
 
   // Filter tasks with defensive checks
   const getTasksByStatus = (status: string) => {
@@ -195,12 +271,26 @@ export default function KanbanPage() {
     }, 0)
   }
 
-  if (loading && tasks.length === 0) {
+  // Show loading state while project is loading or tasks are being fetched
+  if (projectLoading || (loading && tasks.length === 0 && !projectId)) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="text-center space-y-2">
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent mx-auto" />
-          <p className="text-muted-foreground">Loading tasks...</p>
+          <p className="text-muted-foreground">
+            {projectLoading ? 'Loading project...' : 'Loading tasks...'}
+          </p>
+        </div>
+      </div>
+    )
+  }
+  
+  // Show message if no project is available
+  if (!currentProject && !projectId) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="text-center space-y-2">
+          <p className="text-muted-foreground">No project selected</p>
         </div>
       </div>
     )
