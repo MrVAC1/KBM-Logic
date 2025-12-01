@@ -32,36 +32,49 @@ function getRolePermissions(roleName) {
 }
 
 /**
- * Get role hierarchy value by role name
- * Lower number = higher hierarchy (Owner = 0, Guest = 99)
- * Checks both default roles and custom roles
+ * Get ordered role list for position-based hierarchy
+ * Returns array: [Owner, ...customRoles, Guest]
+ * Index 0 = Highest power (Owner)
+ * Last Index = Lowest power (Guest)
  */
-function getRoleHierarchy(roleName, project = null) {
-  // First check default roles
-  const defaultRoles = Project.getDefaultRoles();
-  const defaultRoleDef = defaultRoles.find(r => r.name === roleName);
-  if (defaultRoleDef) {
-    return defaultRoleDef.hierarchy;
+function getOrderedRoleList(project) {
+  const orderedRoles = [];
+  
+  // Owner is always at index 0
+  orderedRoles.push({ name: 'Owner', isDefault: true });
+  
+  // Add custom roles in their current order (from customRoles array)
+  if (project.customRoles && project.customRoles.length > 0) {
+    project.customRoles.forEach(customRole => {
+      orderedRoles.push({ name: customRole.name, isDefault: false });
+    });
   }
   
-  // Then check custom roles if project is provided
-  if (project && project.customRoles) {
-    const customRole = project.customRoles.find(r => r.name === roleName);
-    if (customRole) {
-      return customRole.hierarchy || 200; // Custom roles default to 200
-    }
-  }
+  // Guest is always at the last index
+  orderedRoles.push({ name: 'Guest', isDefault: true });
   
-  return 200; // Default to lowest hierarchy for unknown roles
+  return orderedRoles;
 }
 
 /**
- * Get user's role hierarchy in a project
- * Returns hierarchy value (lower = higher priority)
- * Owner always returns 0
+ * Get role index in the ordered role list (position-based hierarchy)
+ * Returns -1 if role not found
+ * Index 0 = Highest power (Owner)
+ * Last Index = Lowest power (Guest)
  */
-function getUserRoleHierarchy(project, userId) {
-  // Owner always has highest hierarchy
+function getRoleIndex(roleName, project) {
+  const orderedRoles = getOrderedRoleList(project);
+  const roleIndex = orderedRoles.findIndex(r => r.name === roleName);
+  return roleIndex;
+}
+
+/**
+ * Get user's role index in a project (position-based hierarchy)
+ * Returns index (0 = Owner = highest power, last = Guest = lowest power)
+ * Returns -1 if user not found
+ */
+function getUserRoleIndex(project, userId) {
+  // Owner always at index 0
   if (project.ownerId.toString() === userId.toString()) {
     return 0;
   }
@@ -69,10 +82,12 @@ function getUserRoleHierarchy(project, userId) {
   // Find member's role
   const member = project.members.find(m => m.userId.toString() === userId.toString());
   if (!member || !member.roleName) {
-    return 100; // Guest or no role = lowest hierarchy
+    // Guest or no role = last index (lowest power)
+    const orderedRoles = getOrderedRoleList(project);
+    return orderedRoles.length - 1; // Last index (Guest)
   }
   
-  return getRoleHierarchy(member.roleName, project);
+  return getRoleIndex(member.roleName, project);
 }
 
 /**
@@ -95,16 +110,24 @@ function getUserPermissions(project, userId) {
 }
 
 /**
- * Check if requester can modify target role based on hierarchy
- * Rule: Requester can only modify roles that are below them (higher hierarchy number)
+ * Check if requester can modify target role based on position-based hierarchy
+ * Rule: Requester can only modify roles that are below them (higher index)
+ * Index 0 = Highest power, Last Index = Lowest power
  */
 function canModifyRole(project, requesterUserId, targetRoleName) {
-  const requesterHierarchy = getUserRoleHierarchy(project, requesterUserId);
-  const targetHierarchy = getRoleHierarchy(targetRoleName, project);
+  const requesterIndex = getUserRoleIndex(project, requesterUserId);
+  const targetIndex = getRoleIndex(targetRoleName, project);
   
-  // Requester must have lower hierarchy number (higher priority) than target
-  // Cannot modify roles at same or higher hierarchy level (stricter rule)
-  return requesterHierarchy < targetHierarchy;
+  // If either role not found, deny access
+  if (requesterIndex === -1 || targetIndex === -1) {
+    return false;
+  }
+  
+  // Requester must have lower index (higher power) than target
+  // Cannot modify roles at same or higher power level
+  // Example: Index 0 (Owner) can modify Index 1, 2, 3...
+  // Example: Index 1 can modify Index 2, 3, 4... but NOT Index 0
+  return requesterIndex < targetIndex;
 }
 
 /**
@@ -409,18 +432,18 @@ export const updateMemberRole = async (req, res) => {
 
     // === HIERARCHY CHECK: Requester can only assign roles below them ===
     if (!canModifyRole(project, userId, roleName)) {
-      const requesterHierarchy = getUserRoleHierarchy(project, userId);
-      const targetHierarchy = getRoleHierarchy(roleName, project);
-      logger.warn(`Hierarchy violation: User ${userId} (hierarchy ${requesterHierarchy}) attempted to assign role ${roleName} (hierarchy ${targetHierarchy})`);
+      const requesterIndex = getUserRoleIndex(project, userId);
+      const targetIndex = getRoleIndex(roleName, project);
+      logger.warn(`Hierarchy violation: User ${userId} (index ${requesterIndex}) attempted to assign role ${roleName} (index ${targetIndex})`);
       return sendError(res, `Access denied: You cannot assign the "${roleName}" role. You can only assign roles below your own in the hierarchy.`, 403);
     }
 
     // === HIERARCHY CHECK: Requester can only modify members with roles below them ===
     const targetMemberCurrentRole = targetMember.roleName || 'Guest';
     if (!canModifyRole(project, userId, targetMemberCurrentRole)) {
-      const requesterHierarchy = getUserRoleHierarchy(project, userId);
-      const targetMemberHierarchy = getRoleHierarchy(targetMemberCurrentRole, project);
-      logger.warn(`Hierarchy violation: User ${userId} (hierarchy ${requesterHierarchy}) attempted to modify member with role ${targetMemberCurrentRole} (hierarchy ${targetMemberHierarchy})`);
+      const requesterIndex = getUserRoleIndex(project, userId);
+      const targetMemberIndex = getRoleIndex(targetMemberCurrentRole, project);
+      logger.warn(`Hierarchy violation: User ${userId} (index ${requesterIndex}) attempted to modify member with role ${targetMemberCurrentRole} (index ${targetMemberIndex})`);
       return sendError(res, `Access denied: You cannot modify members with the "${targetMemberCurrentRole}" role. You can only modify members with roles below your own in the hierarchy.`, 403);
     }
 
@@ -607,42 +630,50 @@ export const getProjectRoles = async (req, res) => {
       });
     }
     
-    // Merge with default role info (hierarchy, color)
-    const rolesWithMetadata = allRoles.map(role => {
-      // First check if it's a default role
-      const defaultRole = defaultRoles.find(r => r.name === role.name);
+    // Build ordered role list: Owner (index 0), custom roles, Guest (last index)
+    const orderedRoleList = getOrderedRoleList(project);
+    
+    // Merge with role info and metadata
+    const rolesWithMetadata = orderedRoleList.map((roleItem, index) => {
+      const roleName = roleItem.name;
+      
+      // Find role data from members or custom roles
+      const roleData = allRoles.find(r => r.name === roleName);
+      
+      // Get default role info for Owner/Guest
+      const defaultRole = defaultRoles.find(r => r.name === roleName);
+      
+      // Get custom role info if applicable
+      const customRole = project.customRoles?.find(r => r.name === roleName);
+      
+      // Determine permissions
+      let permissions = [];
+      if (roleName === 'Owner') {
+        permissions = ALL_PERMISSIONS;
+      } else if (roleData) {
+        permissions = roleData.permissions || [];
+      } else if (customRole) {
+        permissions = Array.isArray(customRole.permissions) ? customRole.permissions : [];
+      } else if (defaultRole) {
+        permissions = defaultRole.permissions || [];
+      }
+      
+      // Determine color
+      let color = '#6b7280';
       if (defaultRole) {
-        return {
-          name: role.name,
-          permissions: role.permissions || (role.name === 'Owner' ? ALL_PERMISSIONS : []),
-          hierarchy: defaultRole.hierarchy,
-          color: defaultRole.color,
-          isOwner: role.name === 'Owner',
-          isDefault: true,
-        };
+        color = defaultRole.color;
+      } else if (customRole) {
+        color = customRole.color || '#6b7280';
       }
       
-      // Then check if it's a custom role
-      const customRole = project.customRoles?.find(r => r.name === role.name);
-      if (customRole) {
-        return {
-          name: role.name,
-          permissions: role.permissions || (Array.isArray(customRole.permissions) ? customRole.permissions : []),
-          hierarchy: customRole.hierarchy || 200,
-          color: customRole.color || '#6b7280',
-          isOwner: false,
-          isDefault: false,
-        };
-      }
-      
-      // Fallback
       return {
-        name: role.name,
-        permissions: role.permissions || [],
-        hierarchy: 200,
-        color: '#6b7280',
-        isOwner: role.name === 'Owner',
-        isDefault: false,
+        name: roleName,
+        permissions,
+        color,
+        isOwner: roleName === 'Owner',
+        isDefault: roleItem.isDefault,
+        // Position in the hierarchy (index-based)
+        position: index,
       };
     });
 
@@ -680,10 +711,18 @@ export const updateRolePermissions = async (req, res) => {
 
     // === HIERARCHY CHECK: Requester can only modify roles below them ===
     if (!canModifyRole(project, userId, roleName)) {
-      const requesterHierarchy = getUserRoleHierarchy(project, userId);
-      const targetHierarchy = getRoleHierarchy(roleName, project);
-      logger.warn(`Hierarchy violation: User ${userId} (hierarchy ${requesterHierarchy}) attempted to modify role ${roleName} (hierarchy ${targetHierarchy})`);
+      const requesterIndex = getUserRoleIndex(project, userId);
+      const targetIndex = getRoleIndex(roleName, project);
+      logger.warn(`Hierarchy violation: User ${userId} (index ${requesterIndex}) attempted to modify role ${roleName} (index ${targetIndex})`);
       return sendError(res, `Access denied: You cannot modify the "${roleName}" role. You can only modify roles below your own in the hierarchy.`, 403);
+    }
+
+    // === SUBSET RULE: User cannot grant permissions they don't have ===
+    const userPermissions = getUserPermissions(project, userId);
+    if (!hasPermissionToGrant(userPermissions, permissions)) {
+      const missingPermissions = permissions.filter(p => !userPermissions.includes(p));
+      logger.warn(`Subset rule violation: User ${userId} tried to grant permissions they don't have: ${missingPermissions.join(', ')}`);
+      return sendError(res, `Access denied: You cannot grant permissions that you do not possess yourself. Missing permissions: ${missingPermissions.join(', ')}`, 403);
     }
 
     // === VALIDATE PERMISSIONS ARRAY ===
@@ -705,13 +744,8 @@ export const updateRolePermissions = async (req, res) => {
       logger.info(`Removed can_delete_project from ${roleName} role permissions`);
     }
 
-    // === PRIVILEGE ESCALATION CHECK: User cannot grant permissions they don't have ===
-    const userPermissions = getUserPermissions(project, userId);
-    if (!hasPermissionToGrant(userPermissions, permissions)) {
-      const missingPermissions = permissions.filter(p => !userPermissions.includes(p));
-      logger.warn(`Privilege escalation attempt: User ${userId} tried to grant permissions they don't have: ${missingPermissions.join(', ')}`);
-      return sendError(res, `Access denied: You cannot grant permissions that you do not possess yourself. Missing permissions: ${missingPermissions.join(', ')}`, 403);
-    }
+    // === SUBSET RULE: User cannot grant permissions they don't have (already checked above) ===
+    // This check is redundant but kept for clarity
 
     // === UPDATE ALL MEMBERS WITH THIS ROLE ===
     let updatedCount = 0;
@@ -740,11 +774,12 @@ export const updateRolePermissions = async (req, res) => {
 };
 
 /**
- * Update role order/hierarchy
+ * Update role order/hierarchy (Position-Based)
  * PUT /api/projects/:projectId/roles/order
  * 
- * Updates the hierarchy order of roles based on provided order
- * Owner role is always at position 0 and cannot be reordered
+ * Updates the order of custom roles in the project
+ * Owner (index 0) and Guest (last index) are pinned and cannot be reordered
+ * Only custom roles between them can be reordered
  */
 export const updateRoleOrder = async (req, res) => {
   try {
@@ -759,136 +794,115 @@ export const updateRoleOrder = async (req, res) => {
       return sendError(res, 'Role order must be an array', 400);
     }
 
-    // Owner must always be first if present
-    if (roleOrder.length > 0 && roleOrder[0] !== 'Owner') {
-      // Check if Owner is in the list at all
+    // Owner must always be at index 0 - enforce this strictly
+    if (roleOrder.length === 0) {
+      return sendError(res, 'Role order cannot be empty', 400);
+    }
+    
+    // Force Owner to be at index 0 (fix if frontend sent wrong order)
+    if (roleOrder[0] !== 'Owner') {
+      // Check if Owner is in the list
       const ownerIndex = roleOrder.indexOf('Owner');
       if (ownerIndex !== -1) {
-        return sendError(res, 'Owner role must always be at position 1 and cannot be reordered', 400);
+        // Move Owner to position 0
+        roleOrder.splice(ownerIndex, 1);
+        roleOrder.unshift('Owner');
+        logger.info(`Fixed role order: Moved Owner from index ${ownerIndex} to index 0`);
+      } else {
+        // Owner not in list - add it at the beginning
+        roleOrder.unshift('Owner');
+        logger.info(`Fixed role order: Added Owner at index 0`);
       }
     }
 
-    // Get default roles for hierarchy reference
-    const defaultRoles = Project.getDefaultRoles();
-    const ownerRole = defaultRoles.find(r => r.name === 'Owner');
-    
-    // Extract unique role definitions from current members
-    const currentRoles = extractRoleDefinitions(project.members);
-    const roleNames = currentRoles.map(r => r.name);
-
-    // Validate that all roles in order exist
-    const invalidRoles = roleOrder.filter(name => name !== 'Owner' && !roleNames.includes(name));
-    if (invalidRoles.length > 0) {
-      return sendError(res, `Invalid roles in order: ${invalidRoles.join(', ')}`, 400);
+    // Guest must always be at the last index - enforce this strictly
+    const guestIndex = roleOrder.indexOf('Guest');
+    if (guestIndex !== -1 && guestIndex !== roleOrder.length - 1) {
+      // Move Guest to last position (fix if frontend sent wrong order)
+      roleOrder.splice(guestIndex, 1);
+      roleOrder.push('Guest');
+      logger.info(`Fixed role order: Moved Guest to last position (index ${roleOrder.length - 1})`);
+    } else if (guestIndex === -1) {
+      // Guest not in list - add it at the end
+      roleOrder.push('Guest');
+      logger.info(`Fixed role order: Added Guest at last position`);
     }
 
-    // === HIERARCHY SECURITY CHECK: Prevent privilege escalation ===
-    const requesterHierarchy = getUserRoleHierarchy(project, userId);
+    // Get current ordered role list
+    const currentOrder = getOrderedRoleList(project);
+    const currentCustomRoles = project.customRoles || [];
+    const customRoleNames = currentCustomRoles.map(r => r.name);
+
+    // Extract only custom roles from roleOrder (exclude Owner and Guest)
+    const newCustomRoleOrder = roleOrder.filter(name => name !== 'Owner' && name !== 'Guest');
+
+    // Validate that all custom roles in order exist
+    const invalidRoles = newCustomRoleOrder.filter(name => !customRoleNames.includes(name));
+    if (invalidRoles.length > 0) {
+      return sendError(res, `Invalid custom roles in order: ${invalidRoles.join(', ')}`, 400);
+    }
+
+    // Validate that all custom roles are included
+    if (newCustomRoleOrder.length !== customRoleNames.length) {
+      return sendError(res, `Missing custom roles in order. Expected ${customRoleNames.length} custom roles, got ${newCustomRoleOrder.length}`, 400);
+    }
+
+    // === OWNER BYPASS: Owner always has index 0 (highest power) and can reorder any role ===
+    const isOwner = project.ownerId.toString() === userId.toString();
     
     // Get user's current role name
-    const requesterRoleName = userId.toString() === project.ownerId.toString() 
+    const requesterRoleName = isOwner 
       ? 'Owner' 
       : (project.members.find(m => m.userId.toString() === userId.toString())?.roleName || 'Guest');
     
-    // Find requester's position in the new order
-    const requesterNewIndex = roleOrder.indexOf(requesterRoleName);
-    
-    // Rule: User cannot reorder roles in a way that would result in privilege escalation
-    // Specifically: No role with higher priority (lower hierarchy number) should be below user's role
-    
-    if (requesterNewIndex !== -1 && requesterRoleName !== 'Owner') {
-      // Get all roles that come AFTER the requester in the new order
-      const rolesAfterRequester = roleOrder.slice(requesterNewIndex + 1);
+    // === POSITION-BASED SECURITY CHECK: Prevent privilege escalation ===
+    // Skip hierarchy check for Owner - they can reorder anything
+    if (!isOwner) {
+      const requesterIndex = getUserRoleIndex(project, userId);
       
-      // Check each role after requester's position
-      for (const roleName of rolesAfterRequester) {
-        const roleHierarchy = getRoleHierarchy(roleName, project);
-        
-        // If this role has a lower hierarchy number (higher priority) than requester,
-        // it means requester is trying to place themselves above a higher-priority role
-        // This is privilege escalation and should be blocked
-        if (roleHierarchy < requesterHierarchy) {
-          logger.warn(`Privilege escalation attempt: User ${userId} (${requesterRoleName}, hierarchy ${requesterHierarchy}) attempted to reorder their role above ${roleName} (hierarchy ${roleHierarchy})`);
-          return sendError(res, `Access denied: You cannot reorder roles in a way that places your role ("${requesterRoleName}") above "${roleName}" in the hierarchy. This would be privilege escalation.`, 403);
-        }
+      // Find requester's position in the new order
+      const requesterNewIndex = roleOrder.indexOf(requesterRoleName);
+      
+      if (requesterNewIndex === -1) {
+        return sendError(res, 'Your role was not found in the role order', 400);
       }
-      
-      // Also check: User cannot move higher-priority roles below their own role
-      // Get all roles that come BEFORE the requester in the new order
-      const rolesBeforeRequester = roleOrder.slice(0, requesterNewIndex).filter(name => name !== 'Owner');
-      
-      // Compare with default order to see if any higher-priority role was moved down
-      const defaultOrder = defaultRoles
-        .filter(r => roleNames.includes(r.name))
-        .sort((a, b) => a.hierarchy - b.hierarchy)
-        .map(r => r.name);
-      
-      for (const roleNameBefore of rolesBeforeRequester) {
-        const roleBeforeHierarchy = getRoleHierarchy(roleNameBefore, project);
+
+      // Rule: User cannot reorder roles in a way that would place them above higher-priority roles
+      // Check all roles that come BEFORE the requester in the new order
+      if (requesterNewIndex > 0) {
+        const rolesBeforeRequester = roleOrder.slice(0, requesterNewIndex);
         
-        // If this role has higher priority (lower hierarchy) than requester,
-        // it's fine if it's before requester - that's expected
-        // But we should check if requester moved their role above it when they shouldn't
-        // Actually, this is already handled by the check above - if requester is above a higher role, that's the issue
-      }
-    }
-    
-    // Additional check: Prevent moving any role above a role with higher priority (lower hierarchy)
-    // This prevents users from manipulating the order to create confusion
-    for (let i = 0; i < roleOrder.length - 1; i++) {
-      const currentRole = roleOrder[i];
-      const nextRole = roleOrder[i + 1];
-      
-      if (currentRole === 'Owner' || nextRole === 'Owner') continue;
-      
-      const currentHierarchy = getRoleHierarchy(currentRole, project);
-      const nextHierarchy = getRoleHierarchy(nextRole, project);
-      
-      // If a lower-priority role (higher hierarchy number) is placed above a higher-priority role,
-      // check if requester has permission to do this
-      if (currentHierarchy > nextHierarchy) {
-        // This is only allowed if requester has higher priority than both roles
-        if (requesterHierarchy >= currentHierarchy || requesterHierarchy >= nextHierarchy) {
-          logger.warn(`Hierarchy violation: User ${userId} (hierarchy ${requesterHierarchy}) attempted to place ${currentRole} (hierarchy ${currentHierarchy}) above ${nextRole} (hierarchy ${nextHierarchy})`);
-          return sendError(res, `Access denied: You cannot reorder roles in a way that violates hierarchy. Cannot place "${currentRole}" above "${nextRole}".`, 403);
+        // Check each role before requester's position
+        for (const roleNameBefore of rolesBeforeRequester) {
+          if (roleNameBefore === 'Owner') continue; // Owner is always at top
+          
+          const roleBeforeIndex = getRoleIndex(roleNameBefore, project);
+          
+          // If this role has a higher index (lower priority) than requester in current order,
+          // but is now before requester in new order, this is privilege escalation
+          if (roleBeforeIndex > requesterIndex) {
+            logger.warn(`Privilege escalation attempt: User ${userId} (${requesterRoleName}, index ${requesterIndex}) attempted to reorder above ${roleNameBefore} (index ${roleBeforeIndex})`);
+            return sendError(res, `Access denied: You cannot reorder roles in a way that places your role above "${roleNameBefore}" in the hierarchy. This would be privilege escalation.`, 403);
+          }
         }
       }
     }
 
-    // Calculate new hierarchy values based on order
-    // Lower index = lower hierarchy number (higher priority)
-    // Start from 10 (skip 0 which is Owner)
-    let hierarchyIncrement = 10;
-    const newHierarchies = {};
-    
-    // Owner always has hierarchy 0
-    if (roleOrder[0] === 'Owner' || roleNames.includes('Owner')) {
-      newHierarchies['Owner'] = 0;
-      hierarchyIncrement = 10; // Start other roles at 10
-    }
+    // Reorder custom roles array based on new order
+    const reorderedCustomRoles = newCustomRoleOrder.map(roleName => {
+      return currentCustomRoles.find(r => r.name === roleName);
+    }).filter(Boolean); // Remove any undefined entries
 
-    // Assign hierarchy to other roles based on their order
-    roleOrder.forEach((roleName, index) => {
-      if (roleName !== 'Owner') {
-        newHierarchies[roleName] = hierarchyIncrement + (index * 10);
-      }
-    });
+    // Update project's customRoles array
+    project.customRoles = reorderedCustomRoles;
+    await project.save();
 
-    // Note: We don't actually store hierarchy in the project model
-    // Hierarchy is determined by default roles. This endpoint mainly serves
-    // as a validation endpoint and could be extended to store custom hierarchies
-    // For now, we'll validate the order and return success
-    
-    // The actual hierarchy enforcement happens in the security checks
-    // Frontend can use this endpoint to validate the order before applying changes
-
-    logger.info(`Role order updated: User ${userId} updated role order in project ${project._id}`);
+    logger.info(`Role order updated: User ${userId} updated custom role order in project ${project._id}`);
 
     sendSuccess(res, {
       message: 'Role order updated successfully',
       roleOrder,
-      hierarchies: newHierarchies,
-      note: 'Role hierarchies are determined by default role definitions. Reordering affects display order only.',
+      note: 'Role hierarchy is now position-based. Order determines power: Index 0 = Highest, Last Index = Lowest.',
     });
   } catch (error) {
     logger.error(`Update Role Order Error: ${error.message}`, { error });
@@ -939,28 +953,11 @@ export const createProjectRole = async (req, res) => {
     const validColors = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#a855f7', '#6b7280'];
     const selectedColor = color && validColors.includes(color) ? color : '#6b7280';
 
-    // Get current highest hierarchy (lowest number = highest priority)
-    // Find the highest hierarchy among all roles
-    const allRoles = [...defaultRoles];
-    if (project.customRoles && project.customRoles.length > 0) {
-      project.customRoles.forEach(cr => {
-        allRoles.push({
-          name: cr.name,
-          hierarchy: cr.hierarchy || 200,
-        });
-      });
-    }
-
-    // New custom role gets the lowest priority (highest hierarchy number)
-    // Start from Guest hierarchy (99) if no custom roles exist
-    const maxHierarchy = Math.max(...allRoles.map(r => r.hierarchy || 200), 99);
-    const newHierarchy = maxHierarchy + 10; // Place at bottom
-
-    // Create new custom role
+    // Create new custom role (position-based: new roles are added to the end of customRoles array)
+    // They will be positioned between Owner (index 0) and Guest (last index)
     const newRole = {
       name: roleName,
       color: selectedColor,
-      hierarchy: newHierarchy,
       permissions: [], // Start with zero permissions
       createdAt: new Date(),
     };
@@ -1017,11 +1014,11 @@ export const deleteProjectRole = async (req, res) => {
       return sendError(res, `Cannot delete default role "${roleName}". Default roles cannot be removed.`, 403);
     }
 
-    // === HIERARCHY CHECK: User can only delete roles below them ===
+    // === POSITION-BASED HIERARCHY CHECK: User can only delete roles below them ===
     if (!canModifyRole(project, userId, roleName)) {
-      const requesterHierarchy = getUserRoleHierarchy(project, userId);
-      const targetHierarchy = getRoleHierarchy(roleName, project);
-      logger.warn(`Hierarchy violation: User ${userId} (hierarchy ${requesterHierarchy}) attempted to delete role ${roleName} (hierarchy ${targetHierarchy})`);
+      const requesterIndex = getUserRoleIndex(project, userId);
+      const targetIndex = getRoleIndex(roleName, project);
+      logger.warn(`Hierarchy violation: User ${userId} (index ${requesterIndex}) attempted to delete role ${roleName} (index ${targetIndex})`);
       return sendError(res, `Access denied: You cannot delete the "${roleName}" role. You can only delete roles below your own in the hierarchy.`, 403);
     }
 
@@ -1083,5 +1080,6 @@ export const deleteProject = async (req, res) => {
     sendError(res, 'Failed to delete project', 500);
   }
 };
+
 
 

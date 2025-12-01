@@ -52,9 +52,11 @@ router.get('/projects', verifyToken, checkDatabaseConnection, getMyProjects);
 router.get('/projects/:projectId', verifyToken, checkDatabaseConnection, checkProjectMember, getProjectDetails);
 router.get('/projects/:projectId/roles', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_manage_roles'), getProjectRoles);
 router.post('/projects/:projectId/roles', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_manage_roles'), createProjectRole);
+// IMPORTANT: /roles/order must come BEFORE /roles/:roleName to avoid route collision
+// Express matches routes sequentially, so static paths must come before dynamic parameters
+router.put('/projects/:projectId/roles/order', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_manage_roles'), updateRoleOrder);
 router.put('/projects/:projectId/roles/:roleName', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_manage_roles'), updateRolePermissions);
 router.delete('/projects/:projectId/roles/:roleName', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_manage_roles'), deleteProjectRole);
-router.put('/projects/:projectId/roles/order', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_manage_roles'), updateRoleOrder);
 router.post('/projects/join', verifyToken, checkDatabaseConnection, validate('joinProject'), joinProject);
 router.put('/projects/:projectId', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_manage_settings'), validate('updateProject'), updateProject);
 router.post('/projects/:projectId/regenerate-invite', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_invite_users'), regenerateInviteCode);

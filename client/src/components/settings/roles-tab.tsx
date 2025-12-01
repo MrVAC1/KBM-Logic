@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import {
   DndContext,
   closestCenter,
@@ -9,7 +9,12 @@ import {
   useSensor,
   useSensors,
   DragEndEvent,
+  DragStartEvent,
+  DragOverlay,
+  Active,
+  Over,
 } from '@dnd-kit/core'
+import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import {
   arrayMove,
   SortableContext,
@@ -92,9 +97,10 @@ const CRITICAL_PERMISSIONS = ['can_edit_budget', 'can_manage_roles', 'can_delete
 interface Role {
   name: string
   permissions: string[]
-  hierarchy: number
+  position?: number // Position in the hierarchy (0 = Owner = highest, last = Guest = lowest)
   color: string
   isOwner?: boolean
+  isDefault?: boolean // True for Owner/Guest, false for custom roles
 }
 
 // Separate RoleCard component with isolated expand/collapse state
@@ -202,7 +208,6 @@ function RoleCard({ role, allPermissions, permissionLabels, updatingPermissions,
                     </Badge>
                   )}
                 </div>
-                <p className="text-sm text-muted-foreground">Hierarchy Level {role.hierarchy}</p>
               </div>
             </div>
             <Button
@@ -382,6 +387,9 @@ export function RolesTab() {
   const [isReordering, setIsReordering] = useState(false)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [deletingRole, setDeletingRole] = useState<string | null>(null)
+  const [activeId, setActiveId] = useState<string | null>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [containerWidth, setContainerWidth] = useState<number | null>(null)
   
   // Get current user's permissions
   const userPermissions: string[] = []
@@ -412,13 +420,18 @@ export function RolesTab() {
       const rolesData = response.data?.data?.roles || response.data?.roles || []
       
       // Transform backend roles to match frontend structure
+      // Backend now returns roles in order with position field
       const transformedRoles = rolesData.map((role: any) => ({
         name: role.name,
         permissions: Array.isArray(role.permissions) ? role.permissions : [],
-        hierarchy: role.hierarchy || 100,
+        position: role.position !== undefined ? role.position : (role.name === 'Owner' ? 0 : 999),
         color: role.color || '#6b7280',
         isOwner: role.name === 'Owner',
+        isDefault: role.isDefault !== undefined ? role.isDefault : (role.name === 'Owner' || role.name === 'Guest'),
       }))
+      
+      // Sort by position to ensure correct order
+      transformedRoles.sort((a, b) => (a.position || 999) - (b.position || 999))
       
       setRoles(transformedRoles)
     } catch (error: any) {
@@ -432,6 +445,20 @@ export function RolesTab() {
   useEffect(() => {
     fetchRoles()
   }, [fetchRoles])
+
+  // Measure container width for DragOverlay
+  useEffect(() => {
+    const updateWidth = () => {
+      if (containerRef.current) {
+        setContainerWidth(containerRef.current.offsetWidth)
+      }
+    }
+    
+    updateWidth()
+    window.addEventListener('resize', updateWidth)
+    
+    return () => window.removeEventListener('resize', updateWidth)
+  }, [roles]) // Re-measure when roles change
 
   // Handle permission toggle with optimistic UI
   const handlePermissionToggle = async (roleName: string, permissionId: string, newValue: boolean) => {
@@ -504,9 +531,17 @@ export function RolesTab() {
     }
   }
 
+  // Handle drag start - track active item
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveId(event.active.id as string)
+  }
+
   // Handle drag end - update role order
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event
+    
+    // Clear active ID
+    setActiveId(null)
 
     if (!over || active.id === over.id) {
       return
@@ -517,29 +552,38 @@ export function RolesTab() {
       return
     }
 
-    // Separate Owner role from other roles
+    // Separate roles: Owner, custom roles, Guest
     const ownerRole = roles.find(r => r.isOwner)
-    const otherRoles = roles.filter(r => !r.isOwner)
+    const guestRole = roles.find(r => r.name === 'Guest')
+    const customRoles = roles.filter(r => !r.isOwner && r.name !== 'Guest')
 
-    // Ensure Owner cannot be dragged (should not happen, but double-check)
+    // Ensure Owner and Guest cannot be dragged (should not happen, but double-check)
     if (active.id === 'Owner' || over.id === 'Owner') {
       toast.error('The Owner role cannot be reordered.')
       return
     }
+    
+    if (active.id === 'Guest' || over.id === 'Guest') {
+      toast.error('The Guest role cannot be reordered.')
+      return
+    }
 
-    // Find the indices
-    const oldIndex = otherRoles.findIndex(r => r.name === active.id)
-    const newIndex = otherRoles.findIndex(r => r.name === over.id)
+    // Find the indices in custom roles array
+    const oldIndex = customRoles.findIndex(r => r.name === active.id)
+    const newIndex = customRoles.findIndex(r => r.name === over.id)
 
     if (oldIndex === -1 || newIndex === -1) {
       return
     }
 
-    // Reorder the other roles
-    const reorderedRoles = arrayMove(otherRoles, oldIndex, newIndex)
+    // Reorder only the custom roles
+    const reorderedCustomRoles = arrayMove(customRoles, oldIndex, newIndex)
 
-    // Combine: Owner ALWAYS first at index 0, then reordered roles
-    const newRolesOrder = ownerRole ? [ownerRole, ...reorderedRoles] : reorderedRoles
+    // Combine: Owner (index 0), reordered custom roles, Guest (last index)
+    const newRolesOrder = []
+    if (ownerRole) newRolesOrder.push(ownerRole)
+    newRolesOrder.push(...reorderedCustomRoles)
+    if (guestRole) newRolesOrder.push(guestRole)
 
     // Save previous state for rollback
     const previousRoles = [...roles]
@@ -629,10 +673,11 @@ export function RolesTab() {
     ...viewPermissions,
   ]
 
-  // Separate Owner role from other roles
+  // Separate roles: Owner (pinned top), Custom roles (sortable), Guest (pinned bottom)
   const ownerRole = roles.find(r => r.isOwner)
-  const otherRoles = roles.filter(r => !r.isOwner)
-  const sortableRoleIds = otherRoles.map(r => r.name)
+  const guestRole = roles.find(r => r.name === 'Guest')
+  const customRoles = roles.filter(r => !r.isOwner && r.name !== 'Guest')
+  const sortableRoleIds = customRoles.map(r => r.name) // Only custom roles are draggable
   
   const canManageRoles = hasPermission('can_manage_roles')
 
@@ -683,9 +728,11 @@ export function RolesTab() {
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
+            modifiers={[restrictToVerticalAxis]}
+            onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
           >
-            <div className="space-y-3">
+            <div ref={containerRef} className="space-y-3">
               {/* Owner Role - Pinned at top, not draggable */}
               {ownerRole && (
                 <RoleCard
@@ -703,12 +750,12 @@ export function RolesTab() {
                 />
               )}
 
-              {/* Other Roles - Sortable */}
+              {/* Custom Roles - Sortable (between Owner and Guest) */}
               <SortableContext
                 items={sortableRoleIds}
                 strategy={verticalListSortingStrategy}
               >
-                {otherRoles.map((role) => (
+                {customRoles.map((role) => (
                   <RoleCard
                     key={role.name}
                     role={role}
@@ -724,7 +771,74 @@ export function RolesTab() {
                   />
                 ))}
               </SortableContext>
+
+              {/* Guest Role - Pinned at bottom, not draggable */}
+              {guestRole && (
+                <RoleCard
+                  key={guestRole.name}
+                  role={guestRole}
+                  allPermissions={allPermissions}
+                  permissionLabels={permissionLabels}
+                  updatingPermissions={updatingPermissions}
+                  onPermissionToggle={handlePermissionToggle}
+                  onDelete={canManageRoles ? handleDeleteRole : undefined}
+                  isDraggable={false}
+                  userPermissions={userPermissions}
+                  isOwner={isOwner || false}
+                  isDeleting={deletingRole === guestRole.name}
+                />
+              )}
             </div>
+
+            {/* Drag Overlay - Shows the dragged item while dragging */}
+            <DragOverlay
+              style={{
+                width: containerWidth ? `${containerWidth}px` : 'auto',
+              }}
+            >
+              {activeId ? (() => {
+                const activeRole = roles.find(r => r.name === activeId)
+                if (!activeRole) return null
+                
+                // Render a simplified version matching the exact structure of RoleCard
+                // This ensures the overlay matches the list item width and appearance
+                return (
+                  <Card 
+                    style={{ borderLeftColor: activeRole.color }}
+                    className="border-l-4 shadow-xl opacity-95"
+                  >
+                    <CardContent className="py-4">
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="h-3 w-3 rounded-full" style={{ backgroundColor: activeRole.color }} />
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <h3 className="font-semibold text-lg">{activeRole.name}</h3>
+                                {activeRole.isOwner && (
+                                  <Badge variant="secondary" className="bg-primary/10 text-primary">
+                                    <Shield className="h-3 w-3 mr-1" />
+                                    Owner
+                                  </Badge>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            disabled
+                          >
+                            <ChevronDown className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )
+              })() : null}
+            </DragOverlay>
           </DndContext>
           
           {isReordering && (
