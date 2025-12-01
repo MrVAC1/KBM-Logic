@@ -153,10 +153,46 @@ export default function KanbanPage() {
     // Apply "My Tasks" filter
     if (showMyTasksOnly && user?.uid) {
       filtered = safeFilter(filtered, (task) => {
+        if (!task || !user?.uid) return false
+        
         const assignees = safeArray(task?.assignees)
+        if (assignees.length === 0) return false
+        
+        // Normalize current user UID for comparison
+        const currentUserId = user.uid?.toString()?.trim()
+        if (!currentUserId) return false
+        
+        // Check if any assignee matches the current user
         return assignees.some((assignee: any) => {
-          const assigneeId = assignee?.userId || assignee?.id || assignee
-          return assigneeId?.toString() === user.uid?.toString()
+          if (!assignee) return false
+          
+          // Handle different assignee formats:
+          // 1. Object with uid field (populated from backend)
+          if (assignee?.uid) {
+            return assignee.uid.toString().trim() === currentUserId
+          }
+          
+          // 2. Object with userId field
+          if (assignee?.userId) {
+            return assignee.userId.toString().trim() === currentUserId
+          }
+          
+          // 3. Object with _id field
+          if (assignee?._id) {
+            return assignee._id.toString().trim() === currentUserId
+          }
+          
+          // 4. Object with id field
+          if (assignee?.id) {
+            return assignee.id.toString().trim() === currentUserId
+          }
+          
+          // 5. Direct ID string/ObjectId
+          if (typeof assignee === 'string' || assignee?.toString) {
+            return assignee.toString().trim() === currentUserId
+          }
+          
+          return false
         })
       })
     }
@@ -170,6 +206,7 @@ export default function KanbanPage() {
     
     try {
       await tasksAPI.update(task._id || task.id, {
+        projectId: projectId, // Required by backend middleware
         status: 'In Progress',
         assignees: [user.uid],
       })
@@ -183,13 +220,36 @@ export default function KanbanPage() {
   const handleFinishTask = async (task: any) => {
     if (!projectId) return
     
+    const taskId = task._id || task.id
+    
+    // Optimistic update: Move task to Review immediately
+    setTasks(prevTasks => 
+      prevTasks.map(t => 
+        (t._id || t.id) === taskId 
+          ? { ...t, status: 'Review' }
+          : t
+      )
+    )
+    
     try {
-      await tasksAPI.update(task._id || task.id, {
+      await tasksAPI.update(taskId, {
+        projectId: projectId, // Required by backend middleware
         status: 'Review',
       })
+      
       toast.success('Task moved to Review')
+      
+      // Refresh tasks to ensure consistency
       loadTasks()
     } catch (error: any) {
+      // Revert optimistic update on error
+      setTasks(prevTasks => 
+        prevTasks.map(t => 
+          (t._id || t.id) === taskId 
+            ? { ...t, status: task.status || 'In Progress' }
+            : t
+        )
+      )
       toast.error(error.response?.data?.message || 'Failed to finish task')
     }
   }
@@ -206,8 +266,11 @@ export default function KanbanPage() {
       return
     }
     
+    const taskId = task._id || task.id
+    
     try {
-      await tasksAPI.update(task._id || task.id, {
+      await tasksAPI.update(taskId, {
+        projectId: projectId, // Required by backend middleware
         status: 'Done',
       })
       toast.success('Task approved and moved to Done')
@@ -220,8 +283,11 @@ export default function KanbanPage() {
   const handleRequestChanges = async () => {
     if (!requestChangesTask || !projectId) return
     
+    const taskId = requestChangesTask._id || requestChangesTask.id
+    
     try {
-      await tasksAPI.update(requestChangesTask._id || requestChangesTask.id, {
+      await tasksAPI.update(taskId, {
+        projectId: projectId, // Required by backend middleware
         status: 'In Progress',
         // Add comment to description or create a comment field
         description: `${requestChangesTask.description || ''}\n\n[Requested Changes: ${requestChangesComment}]`,
@@ -238,16 +304,45 @@ export default function KanbanPage() {
 
   // Check if user is assigned to task
   const isAssignedToMe = (task: any) => {
-    if (!user?.uid) return false
+    if (!user?.uid || !task) return false
+    
     const assignees = Array.isArray(task?.assignees) ? task.assignees : []
+    if (assignees.length === 0) return false
+    
+    // Normalize current user UID for comparison
+    const currentUserId = user.uid?.toString()?.trim()
+    if (!currentUserId) return false
+    
     return assignees.some((assignee: any) => {
-      // Check if assignee has uid field (populated from backend)
+      if (!assignee) return false
+      
+      // Handle different assignee formats:
+      // 1. Object with uid field (populated from backend) - most common
       if (assignee?.uid) {
-        return assignee.uid.toString() === user.uid?.toString()
+        return assignee.uid.toString().trim() === currentUserId
       }
-      // Fallback: check by ID (for backward compatibility)
-      const assigneeId = assignee?.userId || assignee?._id || assignee?.id || assignee
-      return assigneeId?.toString() === user.uid?.toString()
+      
+      // 2. Object with userId field
+      if (assignee?.userId) {
+        return assignee.userId.toString().trim() === currentUserId
+      }
+      
+      // 3. Object with _id field
+      if (assignee?._id) {
+        return assignee._id.toString().trim() === currentUserId
+      }
+      
+      // 4. Object with id field
+      if (assignee?.id) {
+        return assignee.id.toString().trim() === currentUserId
+      }
+      
+      // 5. Direct ID string/ObjectId
+      if (typeof assignee === 'string' || assignee?.toString) {
+        return assignee.toString().trim() === currentUserId
+      }
+      
+      return false
     })
   }
 
