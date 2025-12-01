@@ -32,9 +32,22 @@ export const createTask = async (req, res) => {
     const { projectId } = req.params;
     const taskData = req.body;
 
+    // Ensure status defaults to 'Todo' if not provided
+    const status = taskData.status || 'Todo';
+    
+    // Normalize assignees - ensure they're valid ObjectIds
+    const assignees = Array.isArray(taskData.assignees) 
+      ? taskData.assignees.filter(id => id) // Filter out null/undefined
+      : [];
+
     const task = await Task.create({
       projectId,
-      ...taskData,
+      title: taskData.title,
+      description: taskData.description || '',
+      status: status,
+      complexity: taskData.complexity || 'Med',
+      assignees: assignees,
+      deadline: taskData.deadline || undefined,
       risk: taskData.risk || {
         probability: 1,
         impact: 1,

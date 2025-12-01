@@ -487,6 +487,7 @@ export default function KanbanPage() {
         open={showCreateTask} 
         onOpenChange={setShowCreateTask}
         onSuccess={loadTasks}
+        projectId={projectId}
       />
       
       {selectedTask && (
