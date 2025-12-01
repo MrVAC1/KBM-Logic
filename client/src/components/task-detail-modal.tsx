@@ -45,22 +45,32 @@ export function TaskDetailModal({ task, open, onOpenChange }: TaskDetailModalPro
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <div className="flex items-start justify-between">
-            <div className="flex-1">
-              <DialogTitle className="text-2xl">{task?.title || "Untitled Task"}</DialogTitle>
-              <DialogDescription className="mt-2">{task?.description || "No description"}</DialogDescription>
+      <DialogContent className="max-w-3xl w-full max-h-[90vh] overflow-y-auto overflow-x-hidden" showCloseButton={false}>
+        <DialogHeader className="min-w-0">
+          <div className="flex items-start justify-between gap-4 min-w-0">
+            <div className="flex-1 min-w-0 overflow-hidden">
+              <DialogTitle 
+                className="text-2xl break-words" 
+                style={{ overflowWrap: 'anywhere' as const }}
+              >
+                {task?.title || "Untitled Task"}
+              </DialogTitle>
+              <DialogDescription 
+                className="mt-2 break-words" 
+                style={{ overflowWrap: 'anywhere' as const }}
+              >
+                {task?.description || "No description"}
+              </DialogDescription>
             </div>
             <Badge
               variant="outline"
-              className={
+              className={`flex-shrink-0 ${
                 task?.complexity === "low"
                   ? "bg-success/10 text-success border-success"
                   : task?.complexity === "medium"
                     ? "bg-warning/10 text-warning border-warning"
                     : "bg-destructive/10 text-destructive border-destructive"
-              }
+              }`}
             >
               {task?.complexity || "medium"} complexity
             </Badge>

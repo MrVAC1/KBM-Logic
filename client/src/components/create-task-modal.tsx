@@ -12,7 +12,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Switch } from "@/components/ui/switch"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { CalendarIcon, X } from "lucide-react"
+import { CalendarIcon, Check } from "lucide-react"
 import { format } from "date-fns"
 import { cn } from "@/lib/utils"
 import { tasks as tasksAPI } from "@/services/api"
@@ -96,25 +96,32 @@ export function CreateTaskModal({ open, onOpenChange, onSuccess, projectId }: Cr
       setEveryoneCanClaim(false)
     }
     
-    if (complexity === "low") {
-      setSelectedUsers([userIdStr])
-    } else {
-      setSelectedUsers((prev) => {
-        const prevStr = prev.map(id => id.toString())
-        if (prevStr.includes(userIdStr)) {
+    setSelectedUsers((prev) => {
+      const prevStr = prev.map(id => id.toString())
+      const isAlreadySelected = prevStr.includes(userIdStr)
+      
+      if (complexity === "low") {
+        // For low complexity: toggle behavior - click selected to deselect, click unselected to select
+        if (isAlreadySelected) {
+          // Deselect if already selected
+          return []
+        } else {
+          // Select this user (replaces any existing selection)
+          return [userIdStr]
+        }
+      } else {
+        // For medium/high complexity: toggle behavior
+        if (isAlreadySelected) {
+          // Deselect if already selected
           return prev.filter((id) => id.toString() !== userIdStr)
         } else {
+          // Select this user (add to list)
           return [...prev, userIdStr]
         }
-      })
-    }
+      }
+    })
   }
 
-  const removeUser = (userId: string, e: React.MouseEvent) => {
-    e.stopPropagation() // Prevent triggering the button's onClick
-    const userIdStr = userId.toString()
-    setSelectedUsers((prev) => prev.filter((id) => id.toString() !== userIdStr))
-  }
 
   const handleEveryoneToggle = (checked: boolean) => {
     setEveryoneCanClaim(checked)
@@ -313,10 +320,11 @@ export function CreateTaskModal({ open, onOpenChange, onSuccess, projectId }: Cr
                         onClick={() => toggleUser(userId)}
                         disabled={isDisabled}
                         className={cn(
-                          "flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm transition-colors",
+                          "flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm transition-all duration-200",
+                          // Unified style for both hover and selected states
                           isSelected
-                            ? "border-primary bg-primary text-primary-foreground"
-                            : "border-border bg-card hover:border-primary",
+                            ? "border-cyan-500 bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/15 hover:border-cyan-400"
+                            : "border-border bg-card text-foreground hover:border-cyan-500 hover:bg-cyan-500/10 hover:text-cyan-400",
                           isDisabled && "opacity-50 cursor-not-allowed",
                         )}
                       >
@@ -326,11 +334,7 @@ export function CreateTaskModal({ open, onOpenChange, onSuccess, projectId }: Cr
                         </Avatar>
                         <span>{user.nickname}</span>
                         {isSelected && (
-                          <X 
-                            className="h-3 w-3" 
-                            onClick={(e) => removeUser(userId, e)}
-                            onPointerDown={(e) => e.stopPropagation()}
-                          />
+                          <Check className="h-3.5 w-3.5 text-cyan-400" />
                         )}
                       </button>
                     )

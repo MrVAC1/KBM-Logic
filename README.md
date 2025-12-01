@@ -1,124 +1,143 @@
-# KBM Logics v0.0 - Pre-UI-Upgrade State
+# KBM Logic
+
+A Hybrid Project Management System combining Kanban simplicity with Enterprise Financial Control.
+
+---
 
 ## Overview
 
-This directory contains the **pre-UI-upgrade stable version** of the KBM Logic project with a clean, flat design.
+KBM Logic is a full-stack MERN application designed for teams that need both agile task management (Kanban boards) and sophisticated financial tracking (S-Curve budgeting, Earned Value Management). The system features dynamic risk calculation, role-based access control, and real-time activity tracking.
 
-### Design Philosophy
-- ✅ **Flat/Clean Design** - No gradients, no framer-motion animations
-- ✅ **Simple Navigation** - Flat list view sidebar, no dropdown menus or collapsible groups
-- ✅ **Minimal Styling** - Clean, functional UI without neon badges
+### Key Features
 
-## ⚠️ Setup Required
+- **Kanban Task Management** - Visual task boards with drag-and-drop workflow
+- **Dynamic Risk Engine** - Auto-adjusting risk scores based on deadlines and budget
+- **S-Curve Budgeting** - Planned Value curves with actual cost tracking
+- **Access Gateway** - Guest/Pending member states with safe view mode
+- **Role-Based Access Control** - Granular permissions per project member
+- **Time Tracking** - Logged hours with cost calculation
+- **Activity Feed** - Real-time project activity tracking
 
-Due to file system encoding issues, you need to run the setup script to complete the installation.
+---
 
-### Step 1: Complete File Copy
+## Tech Stack
 
-Run this PowerShell script from the **parent directory** (верстка):
+### Frontend
+- **React 18** - UI library
+- **TypeScript** - Type safety
+- **Vite** - Build tool
+- **Tailwind CSS** - Styling
+- **Recharts** - Data visualization (budget curves, charts)
+- **Firebase Auth** - Authentication
+- **React Router** - Navigation
+- **Shadcn UI** - Component library
 
-```powershell
-# Navigate to parent directory
-cd "C:\Users\Максим\Desktop\МАГА\сайт\верстка"
+### Backend
+- **Node.js** - Runtime
+- **Express** - Web framework
+- **MongoDB** - Database
+- **Mongoose** - ODM
+- **Firebase Admin** - Token verification
+- **bcryptjs** - Password hashing
 
-# Copy remaining files from kbm-logic-v0 (which has all files)
-robocopy "kbm-logic-v0\client\src" "kbm-logics-v0.0\client\src" /E /XD node_modules
-robocopy "kbm-logic-v0\server" "kbm-logics-v0.0\server" /E /XD node_modules
-robocopy "kbm-logic-v0\docs" "kbm-logics-v0.0\docs" /E
+---
 
-# Copy root files
-copy "kbm-logic-v0\.gitignore" "kbm-logics-v0.0\"
-copy "kbm-logic-v0\start.ps1" "kbm-logics-v0.0\"
+## Quick Start
+
+### Prerequisites
+
+- Node.js 18+ 
+- MongoDB (local or cloud instance)
+- Firebase project (for authentication)
+
+### Installation
+
+1. **Install all dependencies** (root, server, and client):
+```bash
+npm run install:all
 ```
 
-### Step 2: Install Dependencies
+2. **Set up environment variables**:
 
-```powershell
-cd kbm-logics-v0.0
-
-# Install root dependencies
-npm install
-
-# Install client dependencies
-cd client
-npm install
-cd ..
-
-# Install server dependencies
-cd server
-npm install
-cd ..
+Create `server/.env`:
+```env
+PORT=5000
+MONGODB_URI=mongodb://localhost:27017/kbm-logic
+FIREBASE_PROJECT_ID=your-firebase-project-id
+FIREBASE_PRIVATE_KEY=your-private-key
+FIREBASE_CLIENT_EMAIL=your-client-email
 ```
 
-### Step 3: Run the Project
+Create `client/.env`:
+```env
+VITE_API_URL=http://localhost:5000
+VITE_FIREBASE_API_KEY=your-firebase-api-key
+VITE_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=your-firebase-project-id
+```
 
-```powershell
+### Run Development Servers
+
+**Option 1: Run both server and client together**
+```bash
 npm run dev
 ```
 
-Or run separately:
+**Option 2: Run separately**
 
-**Terminal 1 - Server:**
-```powershell
-cd server
-npm run dev
+Terminal 1 - Server:
+```bash
+npm run dev:server
 ```
 
-**Terminal 2 - Client:**
-```powershell
-cd client
-npm run dev
+Terminal 2 - Client:
+```bash
+npm run dev:client
 ```
+
+The application will be available at:
+- **Frontend**: http://localhost:5173
+- **Backend API**: http://localhost:5000
+
+---
 
 ## Project Structure
 
 ```
-kbm-logics-v0.0/
-├── client/              # React frontend (Vite + TypeScript)
+kbm-logic-v0.1/
+├── client/                 # React frontend
 │   ├── src/
-│   │   ├── components/  # UI components (simplified)
-│   │   ├── pages/       # Page components (flat design)
-│   │   ├── contexts/    # React contexts
-│   │   ├── services/    # API services
-│   │   └── lib/         # Utilities
+│   │   ├── components/     # UI components
+│   │   ├── pages/          # Route pages
+│   │   ├── contexts/       # React contexts
+│   │   ├── services/       # API services
+│   │   └── lib/            # Utilities
 │   └── package.json
-├── server/              # Node.js backend (Express)
-│   ├── controllers/     # Route handlers
-│   ├── models/          # Mongoose models
-│   ├── middleware/      # Express middleware
-│   ├── routes/          # API routes
+├── server/                 # Node.js backend
+│   ├── controllers/        # Route handlers
+│   ├── models/             # Mongoose schemas
+│   ├── services/           # Business logic (Risk, Budget engines)
+│   ├── middleware/         # Express middleware
+│   ├── routes/             # API routes
 │   └── package.json
-├── docs/                # Documentation
-└── package.json         # Root package.json
+├── docs/                   # Documentation
+│   ├── BUSINESS_LOGIC.md   # Risk & Budget engines
+│   ├── DATABASE_SCHEMA.md  # MongoDB schemas
+│   └── USER_GUIDE.md       # End-user guide
+└── package.json            # Root package.json
 ```
 
-## Key Changes from v4
+---
 
-| Feature | v0.0 (This) | v4 (Upgraded) |
-|---------|-------------|---------------|
-| Project Cards | Flat, simple | Gradients, animations |
-| Sidebar | Simple list | Dropdown, collapsible |
-| Animations | None | framer-motion |
-| Design | Clean, minimal | Enhanced, modern |
+## Documentation
 
-## What Was Removed
+- **[Business Logic](./docs/BUSINESS_LOGIC.md)** - Dynamic Risk Engine, S-Curve Budgeting, Access Gateway
+- **[Database Schema](./docs/DATABASE_SCHEMA.md)** - MongoDB models and relationships
+- **[User Guide](./docs/USER_GUIDE.md)** - Onboarding, workspace usage, settings
 
-1. **Projects Page** (`client/src/pages/projects/page.tsx`)
-   - Removed: `group`, `transition-all`, `hover:border-primary/50`, `hover:shadow-lg`
-   - Removed: `group-hover:text-primary transition-colors`
-   - Result: Clean, flat project cards
+---
 
-2. **Sidebar** (`client/src/components/app-sidebar.tsx`)
-   - Simple list view (no dropdown menus)
-   - No collapsible groups
-   - Direct navigation links
+## License
 
-3. **Dependencies**
-   - No framer-motion
-   - Only essential packages
-
-## Status
-
-✅ **Ready for setup** - Run the commands above to complete installation.
-
+Private - All rights reserved
 

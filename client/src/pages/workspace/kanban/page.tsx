@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
-import { Plus, Clock, AlertTriangle, CheckCircle2, XCircle, MessageSquare } from "lucide-react"
+import { Plus, AlertTriangle, CheckCircle2, XCircle, MessageSquare } from "lucide-react"
 import { CreateTaskModal } from "@/components/create-task-modal"
 import { TaskDetailModal } from "@/components/task-detail-modal"
 import { tasks as tasksAPI } from "@/services/api"
@@ -16,6 +16,7 @@ import { toast } from "sonner"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { extractArrayFromResponse, safeArray, safeFilter } from "@/lib/safeUtils"
+import { cn } from "@/lib/utils"
 
 const columns = [
   { id: "Todo", title: "To Do", color: "border-slate-500", status: "Todo" },
@@ -360,67 +361,44 @@ export default function KanbanPage() {
                     return (
                       <Card
                         key={task._id || task.id}
-                        className="cursor-pointer hover:border-primary/50 transition-all h-[200px] flex flex-col"
+                        className={cn(
+                          "cursor-pointer hover:border-primary/50 transition-all",
+                          "h-[240px] flex flex-col overflow-hidden",
+                          "bg-card border-border p-0 gap-0"
+                        )}
                         onClick={() => setSelectedTask(task)}
                       >
-                        <CardHeader className="p-4 pb-2 flex-shrink-0">
-                          <CardTitle className="text-sm font-medium line-clamp-2">{task.title}</CardTitle>
+                        {/* Header: Title */}
+                        <CardHeader className="px-0 pt-[18px] pb-1 flex-shrink-0">
+                          <CardTitle className="text-sm font-bold line-clamp-2 px-3">{task.title}</CardTitle>
                         </CardHeader>
-                        <CardContent className="p-4 pt-2 flex-1 flex flex-col justify-between">
+                        
+                        {/* Body: Description */}
+                        <CardContent className="px-0 pt-1 pb-0 flex-1 flex flex-col justify-between min-w-0 overflow-hidden">
                           {task.description && (
-                            <p className="text-xs text-muted-foreground line-clamp-2 mb-2">{task.description}</p>
+                            <p className="text-xs text-muted-foreground line-clamp-2 break-words mb-auto px-3">
+                              {task.description}
+                            </p>
                           )}
                           
-                          {/* Task Metadata */}
-                          <div className="space-y-2">
-                            {/* Assignees */}
-                            {Array.isArray(task.assignees) && task.assignees.length > 0 && (
-                              <div className="flex items-center gap-1 flex-wrap">
-                                {task.assignees.slice(0, 3).map((assignee: any, idx: number) => {
-                                  const assigneeId = assignee?.userId || assignee?.id || assignee
-                                  const assigneeUser = Array.isArray(currentProject?.members) 
-                                    ? currentProject.members.find((m: any) => 
-                                        (m.userId?._id || m.userId?.id || m.userId)?.toString() === assigneeId?.toString()
-                                      )
-                                    : null
-                                  return (
-                                    <Avatar key={idx} className="h-5 w-5">
-                                      <AvatarFallback className="text-[10px]">
-                                        {assigneeUser?.userId?.displayName?.slice(0, 2).toUpperCase() || 'U'}
-                                      </AvatarFallback>
-                                    </Avatar>
-                                  )
-                                })}
-                                {task.assignees.length > 3 && (
-                                  <span className="text-xs text-muted-foreground">+{task.assignees.length - 3}</span>
-                                )}
-                              </div>
-                            )}
-                            
-                            {/* Time & Risk */}
-                            <div className="flex items-center justify-between text-xs">
-                              {totalHours > 0 && (
-                                <div className="flex items-center gap-1 text-muted-foreground">
-                                  <Clock className="h-3 w-3" />
-                                  {totalHours.toFixed(1)}h
-                                </div>
-                              )}
-                              {riskScore > 1 && (
-                                <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded ${getRiskBadge(risk.probability || 1, risk.impact || 1).color}`}>
-                                  <AlertTriangle className="h-3 w-3" />
-                                  {riskScore}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                          
-                          {/* Action Buttons */}
-                          <div className="mt-2 pt-2 border-t border-border flex gap-1" onClick={(e) => e.stopPropagation()}>
+                          {/* Action Buttons - Above the footer line */}
+                          <div 
+                            className="mt-auto px-0 flex gap-1.5 flex-shrink-0" 
+                            onClick={(e) => e.stopPropagation()}
+                          >
                             {column.status === 'Todo' && !assignedToMe && (
                               <Button
                                 size="sm"
-                                variant="outline"
-                                className="flex-1 text-xs h-7"
+                                variant="ghost"
+                                className={cn(
+                                  "flex-1 text-xs h-7 mx-3",
+                                  "bg-transparent hover:bg-transparent active:bg-transparent",
+                                  "border border-transparent",
+                                  "hover:border-primary active:border-primary focus-visible:border-primary",
+                                  "text-foreground hover:text-foreground active:text-foreground",
+                                  "transition-all duration-200",
+                                  "shadow-none hover:shadow-none"
+                                )}
                                 onClick={() => handleClaimTask(task)}
                               >
                                 Claim
@@ -430,8 +408,16 @@ export default function KanbanPage() {
                             {column.status === 'In Progress' && assignedToMe && (
                               <Button
                                 size="sm"
-                                variant="outline"
-                                className="flex-1 text-xs h-7"
+                                variant="ghost"
+                                className={cn(
+                                  "flex-1 text-xs h-7 mx-3",
+                                  "bg-transparent hover:bg-transparent active:bg-transparent",
+                                  "border border-transparent",
+                                  "hover:border-primary active:border-primary focus-visible:border-primary",
+                                  "text-foreground hover:text-foreground active:text-foreground",
+                                  "transition-all duration-200",
+                                  "shadow-none hover:shadow-none"
+                                )}
                                 onClick={() => handleFinishTask(task)}
                               >
                                 Finish
@@ -442,28 +428,136 @@ export default function KanbanPage() {
                               <>
                                 <Button
                                   size="sm"
-                                  variant="outline"
-                                  className="flex-1 text-xs h-7"
+                                  variant="ghost"
+                                  className={cn(
+                                    "flex-1 text-xs h-7 mx-3",
+                                    "bg-transparent hover:bg-transparent active:bg-transparent",
+                                    "border border-transparent",
+                                    "hover:border-primary active:border-primary focus-visible:border-primary",
+                                    "text-foreground hover:text-foreground active:text-foreground",
+                                    "transition-all duration-200",
+                                    "shadow-none hover:shadow-none",
+                                    "disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-transparent"
+                                  )}
                                   onClick={() => handleApproveTask(task)}
                                   disabled={!canMoveToDone(task)}
                                 >
-                                  <CheckCircle2 className="h-3 w-3 mr-1" />
-                                  Approve
+                                  <CheckCircle2 className="h-3 w-3 mr-1 flex-shrink-0" />
+                                  <span className="truncate">Approve</span>
                                 </Button>
                                 <Button
                                   size="sm"
-                                  variant="outline"
-                                  className="flex-1 text-xs h-7"
+                                  variant="ghost"
+                                  className={cn(
+                                    "flex-1 text-xs h-7 mx-3",
+                                    "bg-transparent hover:bg-transparent active:bg-transparent",
+                                    "border border-transparent",
+                                    "hover:border-primary active:border-primary focus-visible:border-primary",
+                                    "text-foreground hover:text-foreground active:text-foreground",
+                                    "transition-all duration-200",
+                                    "shadow-none hover:shadow-none"
+                                  )}
                                   onClick={() => {
                                     setRequestChangesTask(task)
                                     setShowRequestChangesModal(true)
                                   }}
                                 >
-                                  <MessageSquare className="h-3 w-3 mr-1" />
-                                  Request Changes
+                                  <MessageSquare className="h-3 w-3 mr-1 flex-shrink-0" />
+                                  <span className="truncate">Changes</span>
                                 </Button>
                               </>
                             )}
+                          </div>
+                          
+                          {/* Footer: Metadata Row - Avatar, Priority, Deadline */}
+                          <div className="mt-2 px-3 flex items-center justify-between gap-2 min-w-0 pt-2 pb-2 border-t border-border">
+                            {/* Left: Avatar & Name */}
+                            <div className="flex items-center gap-2 flex-shrink-0 min-w-0">
+                              {(() => {
+                                // Handle Department assignment
+                                if (task.department) {
+                                  return (
+                                    <>
+                                      <div className="h-6 w-6 rounded-full border border-border/50 flex-shrink-0 flex items-center justify-center">
+                                        <Users className="h-3 w-3 text-muted-foreground" />
+                                      </div>
+                                      <span className="text-xs text-muted-foreground truncate max-w-[100px]">
+                                        {task.department}
+                                      </span>
+                                    </>
+                                  )
+                                }
+                                
+                                // Handle User assignment
+                                if (Array.isArray(task.assignees) && task.assignees.length > 0) {
+                                  const firstAssignee = task.assignees[0]
+                                  const assigneeId = firstAssignee?.userId || firstAssignee?.id || firstAssignee
+                                  const assigneeUser = Array.isArray(currentProject?.members) 
+                                    ? currentProject.members.find((m: any) => 
+                                        (m.userId?._id || m.userId?.id || m.userId)?.toString() === assigneeId?.toString()
+                                      )
+                                    : null
+                                  
+                                  const displayName = assigneeUser?.userId?.displayName || 
+                                                     assigneeUser?.userId?.nickname || 
+                                                     assigneeUser?.displayName ||
+                                                     'Unknown'
+                                  
+                                  return (
+                                    <>
+                                      <Avatar className="h-6 w-6 border border-border flex-shrink-0">
+                                        <AvatarImage
+                                          src={assigneeUser?.userId?.photoURL || assigneeUser?.userId?.avatar || "/placeholder.svg"}
+                                          alt={displayName}
+                                        />
+                                        <AvatarFallback className="text-[10px] font-medium border border-border">
+                                          {displayName.slice(0, 2).toUpperCase()}
+                                        </AvatarFallback>
+                                      </Avatar>
+                                      <span className="text-xs text-muted-foreground truncate max-w-[100px]">
+                                        {task.assignees.length > 1 
+                                          ? `${displayName} +${task.assignees.length - 1}`
+                                          : displayName
+                                        }
+                                      </span>
+                                    </>
+                                  )
+                                }
+                                
+                                // Unassigned
+                                return (
+                                  <>
+                                    <div className="h-6 w-6 rounded-full border border-border/50 flex-shrink-0" />
+                                    <span className="text-xs text-muted-foreground">Unassigned</span>
+                                  </>
+                                )
+                              })()}
+                            </div>
+                            
+                            {/* Center: Priority/Risk Badge */}
+                            <div className="flex items-center gap-2 flex-1 min-w-0">
+                              {riskScore > 1 && (
+                                <div className={cn(
+                                  "flex items-center gap-1 px-1.5 py-0.5 rounded text-xs",
+                                  getRiskBadge(risk.probability || 1, risk.impact || 1).color
+                                )}>
+                                  <AlertTriangle className="h-3 w-3 flex-shrink-0" />
+                                  <span className="whitespace-nowrap">{riskScore}</span>
+                                </div>
+                              )}
+                            </div>
+                            
+                            {/* Right: Deadline */}
+                            <div className="flex-shrink-0">
+                              {task.deadline && (
+                                <span className="text-xs text-muted-foreground">
+                                  {new Date(task.deadline).toLocaleDateString("en-US", {
+                                    month: "short",
+                                    day: "numeric",
+                                  })}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </CardContent>
                       </Card>
@@ -471,7 +565,7 @@ export default function KanbanPage() {
                   })}
 
                   {columnTasks.length === 0 && (
-                    <div className="flex items-center justify-center rounded-lg border-2 border-dashed border-border p-8 h-[200px]">
+                    <div className="flex items-center justify-center rounded-lg border-2 border-dashed border-border p-8 h-[240px]">
                       <p className="text-sm text-muted-foreground">No tasks</p>
                     </div>
                   )}

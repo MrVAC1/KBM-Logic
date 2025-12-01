@@ -1,408 +1,442 @@
 # User Guide
 
-## Getting Started
+This guide explains how to use KBM Logic from an end-user perspective, covering onboarding, workspace features, and common workflows.
 
-### Creating an Account
+---
 
-1. Navigate to the login page
-2. Click **"Sign up"** link
-3. Fill in:
-   - **Display Name**: Your full name
-   - **Email**: Your email address
-   - **Password**: At least 6 characters
-   - **Confirm Password**: Re-enter password
-4. Click **"Sign up"** button
-5. You'll be automatically logged in and redirected to the Projects page
+## Table of Contents
 
-**Alternative**: Sign up with Google using the **"Sign up with Google"** button.
-
-### Signing In
-
-1. Enter your **Email** and **Password**
-2. Click **"Sign in"** button
-
-**Forgot Password?**
-- Click **"Forgot password?"** link
-- Enter your email
-- Check your inbox for reset link
+1. [Onboarding](#onboarding)
+2. [Workspace Overview](#workspace-overview)
+3. [Kanban Board](#kanban-board)
+4. [Project Settings](#project-settings)
+5. [Troubleshooting](#troubleshooting)
 
 ---
 
 ## Onboarding
 
-### Creating Your First Project
+### Creating an Account
 
-1. On the **Projects** page, click **"Create Project"** button
-2. Fill in:
-   - **Project Name**: e.g., "Website Redesign"
-   - **Description**: Brief project overview
-   - **Access Password**: Password for team members to join
-   - **Copy Settings From** (optional): Import roles from an existing project
-3. Click **"Create Project"**
-4. You'll be automatically added as **Owner** with full permissions
+1. Sign up using Firebase Authentication
+2. You'll be redirected to the Projects page
+3. Your account is automatically created in the system
 
-### Joining an Existing Project
+### Joining a Project
 
-1. On the **Projects** page, click **"Join Project"** button
-2. Enter:
-   - **Project ID**: Provided by project owner
-   - **Access Password**: Provided by project owner
-3. Click **"Join Project"**
-4. You'll be added as a **Guest** with no permissions
-5. Wait for the Project Manager to assign you a role
+To join an existing project, you need:
+- **Project ID**: The unique identifier for the project
+- **Project Password**: The password set by the project owner
 
-**Note**: As a Guest, you'll see a limited "Access Pending" view until your role is assigned.
+**Steps**:
 
----
+1. Click the **"Join Project"** button on the Projects page
+2. Enter the **Project ID**
+3. Enter the **Project Password**
+4. Click **"Join"**
 
-## Workspace Guide
+**What Happens Next**:
 
-### Dashboard (Financial)
+- You are added to the project as a **Guest** member
+- You have **zero permissions** initially
+- You'll see a "Safe View" screen with a message:
+  > "You have successfully joined. Please wait for the Project Manager to assign you a role."
 
-The Dashboard provides **Earned Value Management (EVM)** insights.
+- The Project Owner or Admin must assign you a role before you can access tasks and data
 
-#### Reading the Burn-Down Chart
+### Safe View (Guest/Pending Members)
 
-The chart shows two lines:
-- **Planned (Blue)**: S-Curve of expected spending over time
-- **Actual (Orange)**: Real spending from time logs and transactions
+When you first join a project, you'll see a limited view that shows only:
+- Project name and description
+- Project owner information
+- A message indicating you're waiting for role assignment
 
-**Interpretation**:
-- **Actual above Planned**: Over budget (red zone)
-- **Actual below Planned**: Under budget (green zone)
-- **Gap widening**: Budget risk increasing
+**You cannot**:
+- See tasks
+- See budget/financial data
+- See other members (except owner)
+- Access workspace features
 
-#### Budget Overview Cards
+**You can**:
+- View basic project information
+- Wait for role assignment
 
-- **Total Budget**: Project budget limit
-- **Actual Spent**: Current spending
-- **Remaining**: Budget left
-- **Fixed Costs/Month**: Recurring monthly expenses
-
-#### Managing Funds
-
-1. Click **"Manage Funds"** button
-2. **Add Income**:
-   - Amount
-   - Source (e.g., "Client Payment")
-   - Date
-   - Description
-3. **Add Expense**:
-   - Amount
-   - Source (e.g., "Software License")
-   - Date
-   - Description
-4. Click **"Save"**
-
-#### Fixed Costs
-
-1. Click **"Fixed Costs"** button
-2. Add recurring costs:
-   - **Title**: e.g., "Server Hosting"
-   - **Amount**: Monthly cost
-   - **Frequency**: Monthly, Weekly, Yearly, or One-time
-3. Click **"Add"**
-4. Fixed costs are automatically included in Planned Value calculations
+Once an Owner/Admin assigns you a role (Developer, PM, etc.), you'll gain access to the full workspace.
 
 ---
 
-### Kanban Board
+## Workspace Overview
 
-The Kanban board visualizes task workflow: **Todo → In Progress → Review → Done**.
+Once you have an active role, you'll see the full workspace with a sidebar navigation.
 
-#### Task States
+### Sidebar Navigation
 
-- **Todo**: Not started
-- **In Progress**: Currently being worked on
-- **Review**: Awaiting approval
-- **Done**: Completed
+- **Overview** - Project summary and activity feed
+- **Kanban Board** - Task management
+- **Dashboard** - Financial overview and charts
+- **Project Info** - Project details and members
+- **Settings** - Project configuration (Owner/Admin only)
 
-#### Viewing Tasks
+### Overview Page
 
-- **All Tasks**: See all project tasks
-- **My Tasks**: Filter to tasks assigned to you
+The Overview page shows:
 
-#### Task Card Information
+#### Project Info Card
+- Project name and description
+- Project owner
+- Number of members
+- Your current role
 
-Each card shows:
-- **Title** and **Description**
-- **Assignees**: Avatars of assigned team members
-- **Risk Badge**: Color-coded risk level
-- **Time Logged**: Total hours tracked
-- **Deadline**: Due date (if set)
+#### Recent Activity Feed
 
-#### Opening Task Details
+Shows the latest project events:
+- Task created/updated
+- Member added/removed
+- Transaction added
+- Role changes
 
-Click any task card to open the **Task Detail Modal**.
-
-#### Task Detail Modal
-
-**Manager View** (default):
-- Full financial stats (Estimated Cost, Actual Cost)
-- Time tracking controls
-- Cost calculation breakdown
-- Risk assessment controls
-
-**Developer View**:
-- Personal time tracking only
-- Other members' earnings hidden
-- Task assignment info
-
-**Switch Views**: Use the **"View Mode"** dropdown.
-
-#### Creating a Task
-
-1. Click **"Create Task"** button (top right)
-2. Fill in:
-   - **Title**: Task name
-   - **Description**: Detailed description
-   - **Status**: Todo (default)
-   - **Priority**: Low, Medium, High, Critical
-   - **Complexity**: Low, Med, High
-   - **Assignees**: Select team members
-   - **Deadline**: Due date
-   - **Risk**: Probability (1-5) and Impact (1-5)
-3. Click **"Create Task"**
-
-#### Task Workflow Actions
-
-**From "Todo"**:
-- Click **"Claim"** button → Assigns you and moves to "In Progress"
-
-**From "In Progress"**:
-- Click **"Finish"** button → Moves to "Review"
-
-**From "Review"** (Reviewer role only):
-- **"Approve"** → Moves to "Done"
-- **"Request Changes"** → Moves back to "In Progress" with comment
-
-**Note**: Developers cannot move tasks directly to "Done" (must go through Review).
-
-#### Time Tracking
-
-1. Open task detail modal
-2. Click **"Start Tracking"** button
-3. Work on the task
-4. Click **"Stop Tracking"** button
-5. Time is automatically logged and calculated into Actual Cost
-
-**Permission Required**: `can_track_time`
-
-#### Editing Tasks
-
-1. Open task detail modal
-2. Modify fields (title, description, status, priority, etc.)
-3. Changes save automatically
-
-**Permission Required**: `can_edit_tasks`
+*(Note: Activity feed is currently a placeholder and will show "Activity feed coming soon")*
 
 ---
 
-### Risks Module
+## Kanban Board
 
-The Risks module provides a **5x5 Risk Matrix** for project risk assessment.
+The Kanban Board is the main task management interface. Tasks flow through columns: **Todo** → **In Progress** → **Review** → **Done**.
 
-#### Reading the Risk Matrix
+### Task Cards
 
-**Axes**:
-- **X-Axis (Impact)**: 1 (Minimal) to 5 (Critical)
-- **Y-Axis (Probability)**: 1 (Very Low) to 5 (Very High)
+Each task card displays:
+- **Title** - Task name (bold, truncated if long)
+- **Description** - 2 lines maximum with "..." if longer
+- **Assignee** - Avatar and name (or "Unassigned")
+- **Priority/Risk Badge** - Color-coded risk indicator
+- **Deadline** - Due date (month and day)
 
-**Risk Score**: `Probability × Impact` (1-25 scale)
+### Task Workflow
 
-**Color Coding**:
-- **Green (1-5)**: Low Risk
-- **Yellow (6-10)**: Medium Risk
-- **Orange (11-15)**: High Risk
-- **Red (16-20)**: Very High Risk
-- **Dark Red (21-25)**: Critical Risk
+#### 1. Todo Column
 
-#### Viewing Tasks in Risk Buckets
+**Unassigned Tasks**:
+- Show a **"Claim"** button
+- Click "Claim" to assign the task to yourself
+- Task moves to "In Progress" and you become the assignee
 
-1. Click any cell in the matrix
-2. **Risk Detail Modal** opens showing:
-   - All tasks in that risk bucket
-   - Task titles, descriptions, assignees
-   - Deadlines
-   - Auto-adjustment indicators
+**Assigned Tasks**:
+- Show assignee avatar and name
+- No action buttons (wait for assignee to start)
 
-#### Auto-Adjusted Risks
+#### 2. In Progress Column
 
-Tasks with **"Auto"** badge are automatically adjusted by the Risk Engine:
+**Your Tasks**:
+- Show a **"Finish"** button
+- Click "Finish" when work is complete
+- Task moves to "Review" column
 
-**Triggers**:
-1. **Deadline < 2 days**: Probability increases by +1
-2. **Budget Overrun** (future): Probability increases by +1
+**Other People's Tasks**:
+- Show assignee information
+- No action buttons for you
 
-**Indicator**: Badge shows **"Auto"** with reason (e.g., "Deadline approaching (< 2 days)")
+#### 3. Review Column
 
-#### Risk Register Table
+**Tasks Ready for Review**:
+- Show **"Approve"** button (if you can move to Done)
+- Show **"Changes"** button (to request revisions)
+- Approve moves task to "Done"
+- Changes sends task back to "In Progress" with feedback
 
-Below the matrix, a table lists all tasks with:
-- Task title
-- Current risk score
-- Probability and Impact values
-- Auto-adjustment status
+**Who Can Approve**:
+- Project Owners
+- Admins
+- PMs
+- Not Developers (they can only request changes)
+
+#### 4. Done Column
+
+- Completed tasks
+- Read-only
+- Shows final state and assignee
+
+### Viewing Task Details
+
+Click any task card to open the **Task Detail Modal** showing:
+- Full task description
 - Assignees
+- Time tracking
+- Risk assessment
+- Financial data (if you have permission)
+- Status and deadline
 
-#### Setting Task Risk
+### Creating Tasks
 
-1. Open task detail modal
-2. Scroll to **"Risk Assessment"** section
-3. Set **Probability** (1-5):
-   - 1: Very Low
-   - 2: Low
-   - 3: Medium
-   - 4: High
-   - 5: Very High
-4. Set **Impact** (1-5):
-   - 1: Minimal
-   - 2: Minor
-   - 3: Moderate
-   - 4: Major
-   - 5: Critical
-5. Risk score updates automatically: `Probability × Impact`
+**Required Permissions**: `can_create_tasks`
 
----
+1. Click **"Create Task"** button on the Kanban Board
+2. Fill in:
+   - **Title** (required)
+   - **Description** (required)
+   - **Complexity Level**: Low / Medium / High
+   - **Assignees**: Select users (based on complexity)
+   - **Deadline**: Optional date picker
+3. Click **"Create"**
 
-### Settings
-
-**Access**: Only users with `can_manage_settings` permission can view Settings.
-
-#### General Tab
-
-- **Project Name**: Edit project name
-- **Description**: Edit project description
-- **Fixed Costs**: Manage recurring costs (see Dashboard section)
-
-#### Members Tab
-
-View all project members:
-- **Name** and **Avatar**
-- **Role**: Owner, Admin, PM, Developer, Guest
-- **Joined Date**
-
-#### Roles Tab
-
-View role definitions:
-- **Role Name**: Owner, Admin, PM, Developer, Guest
-- **Permissions**: List of permissions per role
-- **Custom Roles**: Imported or custom role definitions
-
-#### Invites Tab
-
-**Generate Invite Link**:
-1. Click **"Regenerate Invite Code"** button
-2. Copy the generated code
-3. Share with team members
-
-**Invite Options** (future):
-- One-time use
-- Temporary (15 minutes)
-- Permanent
-
-#### Owner Zone (Owner Only)
-
-**Change Project Password**:
-1. Enter new password
-2. Confirm password
-3. Click **"Update Password"**
-
-**Delete Project**:
-1. Click **"Delete Project"** button
-2. Confirm deletion
-3. Project is soft-deleted (`isDeleted: true`)
-
----
-
-## Role-Based Features
-
-### Owner
-- Full access to all features
-- Can delete project
-- Can change project password
-- Can manage all members and roles
-
-### Admin
-- View all modules (Dashboard, Kanban, Risks, Financial)
-- Create, edit, delete tasks
-- Manage roles and invite users
-- Edit budget and transactions
-- Cannot delete project
-
-### PM (Project Manager)
-- View all modules
-- Create and edit tasks
-- Invite users
-- Track time
-- Cannot delete tasks or manage roles
-
-### Developer
-- View Tasks and Risks
-- Track time
-- Create and edit own tasks
-- Cannot view Financial Dashboard
-- Cannot move tasks directly to "Done" (must go through Review)
-
-### Guest
-- No permissions
-- See only "Access Pending" view
-- Cannot access any workspace features
-- Must wait for role assignment
-
----
-
-## Tips & Best Practices
+**Complexity Rules**:
+- **Low**: Max 1 user can be assigned
+- **Medium**: Multiple users allowed
+- **High**: Multiple users or department assignment allowed
 
 ### Time Tracking
-- Start timer when beginning work
-- Stop timer when taking breaks
-- Add descriptions to time logs for better reporting
 
-### Risk Management
-- Set risk scores when creating tasks
-- Monitor "Auto-Adjusted" risks for deadline issues
-- Review high-risk tasks (15+) regularly
+**Required Permissions**: `can_track_time`
 
-### Budget Management
-- Add fixed costs at project start
-- Log all transactions (income and expenses)
-- Monitor Actual vs Planned on Dashboard
-- Set realistic deadlines to avoid auto-risk adjustments
+1. Open a task (click the task card)
+2. In the Task Detail Modal, find the **Time Tracking** section
+3. Click **"Start Tracking"** to begin logging time
+4. Click **"Stop Tracking"** when finished
+5. Time is automatically logged and cost is calculated
 
-### Task Organization
-- Use consistent priority levels
-- Set deadlines for time-sensitive tasks
-- Assign tasks to appropriate team members
-- Use "My Tasks" filter to focus on your work
+**Cost Calculation**:
+- Hours logged × Your hourly rate = Task cost
+- Contributes to project Actual Cost
+
+### My Tasks Filter
+
+Use the **"My Tasks"** toggle on the Kanban Board to filter:
+- **On**: Shows only tasks assigned to you
+- **Off**: Shows all tasks in the project
+
+---
+
+## Project Settings
+
+**Required Permissions**: Owner or `can_manage_settings`
+
+### Accessing Settings
+
+1. Click **"Settings"** in the sidebar
+2. Navigate through tabs:
+   - **General** - Project name, description
+   - **Members** - Member management
+   - **Invites** - Invite link management
+   - **Budget** - Fixed costs configuration
+
+### Regenerate Invite Link
+
+**Required Permissions**: Owner or `can_invite_users`
+
+**Purpose**: Generate a new invite code for security or if the old one was compromised.
+
+**Steps**:
+
+1. Go to **Settings** → **Invites** tab
+2. Click **"Regenerate Invite Link"** button
+3. Confirm the action
+4. New invite code is generated immediately
+5. Old invite code becomes invalid
+
+**Security Note**: Only regenerate if necessary, as it invalidates all previous invite links.
+
+### Owner Safety Locks
+
+**Purpose**: Protect critical project actions from accidental deletion or modification.
+
+**Available Locks**:
+
+1. **Project Deletion Lock**
+   - Prevents accidental project deletion
+   - Requires explicit unlock before deletion
+   - Owner must confirm twice
+
+2. **Member Removal Protection**
+   - Warns before removing members
+   - Prevents removing yourself as owner
+   - Requires confirmation for member removal
+
+3. **Role Modification Protection**
+   - Confirms before changing member roles
+   - Prevents removing owner privileges
+   - Shows impact of role changes
+
+**How to Use**:
+
+- Locks are automatically enabled for safety
+- You'll see confirmation dialogs before critical actions
+- Review the warning message carefully
+- Confirm only if you're sure
+
+---
+
+## Common Workflows
+
+### Workflow 1: Starting Work on a Task
+
+1. Go to **Kanban Board**
+2. Find task in **Todo** column
+3. Click **"Claim"** button
+4. Task is assigned to you and moves to **In Progress**
+5. Open task and click **"Start Tracking"** to log time
+6. Complete the work
+7. Click **"Finish"** button
+8. Task moves to **Review** column
+
+### Workflow 2: Reviewing a Task
+
+1. Task appears in **Review** column
+2. Open the task to review work
+3. Choose one:
+   - **Approve** → Task moves to **Done** (if you have permission)
+   - **Changes** → Request revisions, task moves back to **In Progress**
+
+### Workflow 3: Requesting Changes
+
+1. Open task in **Review** column
+2. Click **"Changes"** button
+3. Enter feedback/change request
+4. Task moves back to **In Progress**
+5. Original assignee sees the feedback and can update the task
+
+### Workflow 4: Inviting a Team Member
+
+**Required**: Owner or `can_invite_users` permission
+
+1. Get the **Invite Link** from Settings → Invites
+2. Share the link with the person you want to invite
+3. They click the link and enter the **Project Password**
+4. They join as **Guest** (zero permissions)
+5. Go to **Settings** → **Members**
+6. Find the new member
+7. Click **"Change Role"**
+8. Select a role (Developer, PM, etc.)
+9. Member gains appropriate permissions
+
+---
+
+## Permissions Reference
+
+Different roles have different capabilities:
+
+### Owner
+- ✅ All permissions
+- Can delete project
+- Can manage all settings
+- Cannot be removed
+
+### Admin
+- ✅ View all data
+- ✅ Manage members and roles
+- ✅ Edit tasks and budget
+- ❌ Cannot delete project
+
+### PM (Project Manager)
+- ✅ View all data
+- ✅ Create/edit tasks
+- ✅ Invite users
+- ❌ Cannot edit budget
+- ❌ Cannot manage all roles
+
+### Developer
+- ✅ View tasks and risks
+- ✅ Create/edit tasks
+- ✅ Track time
+- ❌ Cannot view financial data
+- ❌ Cannot approve tasks (can only request changes)
+
+### Guest
+- ❌ No permissions
+- Sees only Safe View
+- Must wait for role assignment
 
 ---
 
 ## Troubleshooting
 
-### Can't See Project Data
-- Check if you're a project member
-- Verify your role has required permissions
-- Contact project owner if you see "Access Pending"
+### "Access Denied" Error
 
-### Timer Not Working
-- Ensure you have `can_track_time` permission
-- Check if task is assigned to you
-- Refresh page and try again
+**Cause**: You don't have permission to perform this action.
 
-### Can't Create Tasks
-- Verify you have `can_create_tasks` permission
-- Check if you're a project member (not Guest)
-- Contact project admin
+**Solution**:
+- Check your role in the project
+- Contact Project Owner or Admin to grant permissions
+- Ensure you're a member of the project
 
-### Budget Not Updating
-- Ensure time logs are being saved
-- Check if transactions are being created
-- Refresh Dashboard to see latest data
+### "Unknown" Assignee
+
+**Cause**: User data not loaded correctly.
+
+**Solution**:
+- Refresh the page
+- Contact administrator if issue persists
+- The system should automatically populate assignee names
+
+### Can't See Tasks
+
+**Possible Causes**:
+1. You're still a Guest (no permissions)
+   - **Solution**: Wait for Owner/Admin to assign you a role
+2. You don't have `can_view_tasks` permission
+   - **Solution**: Request permission from Owner/Admin
+3. Project has no tasks
+   - **Solution**: Create tasks or ask someone with `can_create_tasks` permission
+
+### Can't Claim Tasks
+
+**Cause**: Task is already assigned or you don't have permission.
+
+**Solution**:
+- Check if task already has an assignee
+- Ensure you have `can_view_tasks` permission
+- Only unassigned tasks in Todo column show Claim button
+
+### Safe View Won't Go Away
+
+**Cause**: You're still a Guest or have zero permissions.
+
+**Solution**:
+- Owner/Admin must assign you a role
+- Check with project owner about your access
+- You should see a message: "Waiting for Project Manager to assign you a role"
 
 ---
 
-**Need Help?** Contact your Project Manager or system administrator.
+## Tips & Best Practices
 
-**Last Updated**: 2024
+### For Developers
+
+1. **Claim tasks before starting work** - This ensures proper assignment
+2. **Use time tracking** - Log hours to help with budget calculations
+3. **Move tasks through workflow** - Todo → In Progress → Review → Done
+4. **Request changes clearly** - Provide specific feedback when using "Changes" button
+
+### For Project Managers
+
+1. **Assign roles promptly** - New members wait in Guest state
+2. **Review tasks regularly** - Keep the Review column moving
+3. **Monitor risk scores** - High risk tasks need attention
+4. **Use My Tasks filter** - Focus on your assigned work
+
+### For Owners/Admins
+
+1. **Protect invite codes** - Only regenerate when necessary
+2. **Grant permissions carefully** - Follow principle of least privilege
+3. **Monitor budget** - Check Dashboard for actual vs planned costs
+4. **Review member roles** - Ensure appropriate access levels
+
+---
+
+## Keyboard Shortcuts
+
+*(Coming soon - keyboard shortcuts will be added in future updates)*
+
+---
+
+## Support
+
+For technical issues or questions:
+- Check the [Troubleshooting](#troubleshooting) section above
+- Review your role and permissions
+- Contact your Project Owner or Admin
+- Check the project's activity feed for recent changes
+
+---
+
+**Last Updated**: Based on KBM Logic v0.1 codebase
 
