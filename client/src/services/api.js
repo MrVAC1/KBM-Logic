@@ -172,6 +172,11 @@ export const memberSettings = {
     apiClient.put(`/projects/${projectId}/members/me/notifications`, { notificationSettings: settings }),
 };
 
+export const reports = {
+  getInvestorReport: (projectId) => 
+    apiClient.get(`/projects/${projectId}/reports/investor`),
+};
+
 export default apiClient;
 
 

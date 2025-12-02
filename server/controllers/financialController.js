@@ -97,15 +97,26 @@ export const getDashboardStats = async (req, res) => {
 
     try {
       currentPV = await calculatePV(project, today);
+      logger.info(`[Financial Dashboard] PV calculated: ${currentPV} (using calculatePV from evmEngine)`);
     } catch (error) {
       logger.warn(`Error calculating current PV: ${error.message}`);
     }
 
     try {
       currentAC = await calculateAC(project, today);
+      logger.info(`[Financial Dashboard] AC calculated: ${currentAC} (using calculateAC from evmEngine)`);
     } catch (error) {
       logger.warn(`Error calculating current AC: ${error.message}`);
     }
+
+    // Log for verification - these should match Investor Report exactly
+    console.log('[Financial Dashboard] Financial Data Verification:', {
+      PV: currentPV,
+      AC: currentAC,
+      Variance: currentAC - currentPV,
+      Date: today.toISOString(),
+      ProjectId: projectId,
+    });
 
     try {
       currentEV = await calculateEV(project, today);

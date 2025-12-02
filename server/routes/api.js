@@ -143,6 +143,10 @@ import { updateMyNotificationSettings, getMyNotificationSettings } from '../cont
 router.get('/projects/:projectId/members/me/notifications', verifyToken, checkDatabaseConnection, checkProjectMember, getMyNotificationSettings);
 router.put('/projects/:projectId/members/me/notifications', verifyToken, checkDatabaseConnection, checkProjectMember, updateMyNotificationSettings);
 
+// Report routes
+import { getInvestorReport } from '../controllers/reportController.js';
+router.get('/projects/:projectId/reports/investor', verifyToken, checkDatabaseConnection, checkProjectMember, getInvestorReport);
+
 export default router;
 
 

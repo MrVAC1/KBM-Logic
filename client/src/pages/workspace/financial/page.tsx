@@ -10,6 +10,7 @@ import { ManageFundsModal } from "@/components/manage-funds-modal"
 import { FixedCostsModal } from "@/components/fixed-costs-modal"
 import { BudgetBreakdownModal } from "@/components/budget-breakdown-modal"
 import { TransactionLogDrawer } from "@/components/transaction-log-drawer"
+import { InvestorReportModal } from "@/components/investor-report-modal"
 import { Tooltip as UITooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { VelocityCard } from "@/components/velocity-card"
 import { useParams } from "react-router-dom"
@@ -24,6 +25,7 @@ export default function FinancialDashboardPage() {
   const [showFixedCosts, setShowFixedCosts] = useState(false)
   const [showBudgetBreakdown, setShowBudgetBreakdown] = useState(false)
   const [showTransactionLog, setShowTransactionLog] = useState(false)
+  const [showInvestorReport, setShowInvestorReport] = useState(false)
   const [stats, setStats] = useState<any>(null)
   const [loading, setLoading] = useState(false)
 
@@ -88,6 +90,11 @@ export default function FinancialDashboardPage() {
               <p className="mt-2 text-muted-foreground">Earned Value Management & Budget Tracking</p>
             </div>
             <div className="flex gap-3">
+              {canViewFinancial && (
+                <Button variant="outline" onClick={() => setShowInvestorReport(true)}>
+                  Investor Report
+                </Button>
+              )}
               <Button variant="outline" onClick={() => setShowFixedCosts(true)}>
                 Fixed Costs
               </Button>
@@ -263,19 +270,19 @@ export default function FinancialDashboardPage() {
                         <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" strokeWidth={1} strokeOpacity={0.3} />
                         <XAxis
                           dataKey="date"
-                          stroke="hsl(var(--foreground))"
+                          stroke="#ffffff"
                           fontSize={12}
                           fontWeight={600}
-                          tick={{ fill: "hsl(var(--foreground))" }}
+                          tick={{ fill: "#ffffff" }}
                           angle={-45}
                           textAnchor="end"
                           height={60}
                         />
                         <YAxis
-                          stroke="hsl(var(--foreground))"
+                          stroke="#ffffff"
                           fontSize={12}
                           fontWeight={600}
-                          tick={{ fill: "hsl(var(--foreground))" }}
+                          tick={{ fill: "#ffffff" }}
                           tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
                         />
                         <Tooltip
@@ -291,7 +298,7 @@ export default function FinancialDashboardPage() {
                           }}
                           labelFormatter={(label) => `Date: ${label}`}
                         />
-                        <Legend />
+                        <Legend wrapperStyle={{ color: "#ffffff" }} iconType="line" />
                         {/* PV Line - Dashed Gray/Blue (The Plan) */}
                         <Line
                           type="monotone"
@@ -355,6 +362,13 @@ export default function FinancialDashboardPage() {
       <FixedCostsModal open={showFixedCosts} onOpenChange={setShowFixedCosts} />
       <BudgetBreakdownModal open={showBudgetBreakdown} onOpenChange={setShowBudgetBreakdown} />
       <TransactionLogDrawer open={showTransactionLog} onOpenChange={setShowTransactionLog} />
+      {projectId && canViewFinancial && (
+        <InvestorReportModal 
+          open={showInvestorReport} 
+          onOpenChange={setShowInvestorReport}
+          projectId={projectId}
+        />
+      )}
     </div>
   )
 }
