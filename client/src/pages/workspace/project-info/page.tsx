@@ -7,7 +7,10 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Activity, Users, Clock, Edit2, Check, X } from "lucide-react"
+import { Activity, Users, Clock, Edit2, Check, X, CalendarIcon } from "lucide-react"
+import { Calendar } from "@/components/ui/calendar"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { cn } from "@/lib/utils"
 import { useProject } from "@/contexts/ProjectContext"
 import { ProjectMembersModal } from "@/components/modals/project-members-modal"
 import { projects as projectsAPI } from "@/services/api"
@@ -23,8 +26,13 @@ export default function ProjectInfoPage() {
     hoursPerDay: currentProject?.workSchedule?.hoursPerDay || 8,
   })
   const [isSaving, setIsSaving] = useState(false)
+  const [isEditingDeadline, setIsEditingDeadline] = useState(false)
+  const [deadline, setDeadline] = useState<Date | undefined>(
+    currentProject?.deadline ? new Date(currentProject.deadline) : undefined
+  )
   
   const canManageWorkSchedule = hasPermission('can_manage_work_schedule')
+  const canManageSettings = hasPermission('can_manage_settings') || hasPermission('can_edit_budget')
 
   // Get member count (includes owner if owner is in members array)
   const memberCount = currentProject?.members?.length || 0
@@ -61,6 +69,15 @@ export default function ProjectInfoPage() {
         daysOffPerWeek: currentProject.workSchedule.daysOffPerWeek || 2,
         hoursPerDay: currentProject.workSchedule.hoursPerDay || 8,
       })
+    }
+  }, [currentProject])
+
+  // Update deadline state when project changes
+  useEffect(() => {
+    if (currentProject?.deadline) {
+      setDeadline(new Date(currentProject.deadline))
+    } else {
+      setDeadline(undefined)
     }
   }, [currentProject])
 
@@ -123,6 +140,47 @@ export default function ProjectInfoPage() {
     setIsEditingSchedule(false)
   }
 
+  const handleSaveDeadline = async () => {
+    if (!projectId || !canManageSettings) return
+
+    // Validate deadline cannot be earlier than createdAt
+    if (deadline) {
+      const createdAtDate = new Date(currentProject.createdAt)
+      if (deadline.getTime() < createdAtDate.getTime()) {
+        toast.error('Deadline cannot be earlier than project creation date')
+        return
+      }
+    }
+
+    setIsSaving(true)
+    try {
+      await projectsAPI.update(projectId, {
+        deadline: deadline ? deadline.toISOString() : null,
+      })
+      toast.success('Project deadline updated successfully')
+      setIsEditingDeadline(false)
+      // Reload project to get updated data
+      if (loadProject) {
+        await loadProject(projectId)
+      }
+    } catch (error: any) {
+      console.error('Failed to update deadline:', error)
+      toast.error(error.response?.data?.message || 'Failed to update deadline')
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const handleCancelDeadlineEdit = () => {
+    // Reset to original value
+    if (currentProject?.deadline) {
+      setDeadline(new Date(currentProject.deadline))
+    } else {
+      setDeadline(undefined)
+    }
+    setIsEditingDeadline(false)
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <div className="border-b border-border bg-card">
@@ -170,6 +228,87 @@ export default function ProjectInfoPage() {
               <div className="flex items-center justify-between py-2 border-b border-border">
                 <span className="text-sm text-muted-foreground">Created At</span>
                 <span className="text-sm text-foreground">{formattedDate}</span>
+              </div>
+
+              {/* Target Completion Date (Deadline) */}
+              <div className="flex items-center justify-between py-2 border-b border-border">
+                <span className="text-sm text-muted-foreground">Target Completion Date</span>
+                {isEditingDeadline ? (
+                  <div className="flex items-center gap-2">
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className={cn(
+                            "w-[200px] justify-start text-left font-normal",
+                            !deadline && "text-muted-foreground"
+                          )}
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {deadline ? format(deadline, "PPP") : "Pick a date"}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="end">
+                        <Calendar
+                          mode="single"
+                          selected={deadline}
+                          onSelect={setDeadline}
+                          initialFocus
+                          disabled={(date) => {
+                            // Disable dates before project creation
+                            const createdAtDate = new Date(currentProject.createdAt)
+                            createdAtDate.setHours(0, 0, 0, 0)
+                            return date < createdAtDate
+                          }}
+                        />
+                      </PopoverContent>
+                    </Popover>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setDeadline(undefined)}
+                      className="text-xs"
+                    >
+                      Clear
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleCancelDeadlineEdit}
+                      disabled={isSaving}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleSaveDeadline}
+                      disabled={isSaving}
+                    >
+                      <Check className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-foreground">
+                      {currentProject?.deadline 
+                        ? format(new Date(currentProject.deadline), "PPP")
+                        : "Not set"
+                      }
+                    </span>
+                    {canManageSettings && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setIsEditingDeadline(true)}
+                        className="h-6 w-6 p-0"
+                      >
+                        <Edit2 className="h-3 w-3" />
+                      </Button>
+                    )}
+                  </div>
+                )}
               </div>
 
               {ownerName && (

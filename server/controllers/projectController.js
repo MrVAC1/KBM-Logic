@@ -441,6 +441,7 @@ export const getProjectDetails = async (req, res) => {
       description: project.description,
       inviteCode: project.inviteCode,
       fixedCosts: project.fixedCosts,
+      deadline: project.deadline, // Include deadline
       workSchedule: project.workSchedule || {
         workingDaysPerWeek: 5,
         daysOffPerWeek: 2,
@@ -717,6 +718,29 @@ export const updateProject = async (req, res) => {
       }
     }
 
+    // Validate deadline if provided
+    if (updates.deadline !== undefined) {
+      // Check permission for project settings updates
+      const userPermissions = getUserPermissions(project, userId);
+      if (!userPermissions.includes('can_manage_settings') && !userPermissions.includes('can_edit_budget')) {
+        return sendError(res, 'Permission denied: You do not have permission to update project deadline', 403);
+      }
+
+      // Validate deadline cannot be earlier than createdAt
+      if (updates.deadline !== null) {
+        const deadlineDate = new Date(updates.deadline);
+        const createdAtDate = new Date(project.createdAt);
+        
+        if (isNaN(deadlineDate.getTime())) {
+          return sendError(res, 'Invalid deadline date format', 400);
+        }
+
+        if (deadlineDate.getTime() < createdAtDate.getTime()) {
+          return sendError(res, 'Deadline cannot be earlier than project creation date', 400);
+        }
+      }
+    }
+
     Object.assign(project, updates);
     await project.save();
 
@@ -725,6 +749,7 @@ export const updateProject = async (req, res) => {
       name: project.name,
       description: project.description,
       fixedCosts: project.fixedCosts,
+      deadline: project.deadline,
       workSchedule: project.workSchedule || {
         workingDaysPerWeek: 5,
         daysOffPerWeek: 2,

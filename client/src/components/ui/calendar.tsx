@@ -1,7 +1,14 @@
 import * as React from 'react'
-import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
+import { ChevronLeftIcon, ChevronRightIcon, ChevronsLeftIcon, ChevronsRightIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 // Simple calendar component that doesn't require react-day-picker
 export interface CalendarProps {
@@ -49,6 +56,25 @@ function Calendar({
   const nextMonth = () => {
     setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1))
   }
+
+  const prevYear = () => {
+    setCurrentMonth(new Date(currentMonth.getFullYear() - 1, currentMonth.getMonth(), 1))
+  }
+
+  const nextYear = () => {
+    setCurrentMonth(new Date(currentMonth.getFullYear() + 1, currentMonth.getMonth(), 1))
+  }
+
+  const handleMonthChange = (monthIndex: number) => {
+    setCurrentMonth(new Date(currentMonth.getFullYear(), monthIndex, 1))
+  }
+
+  const handleYearChange = (year: number) => {
+    setCurrentMonth(new Date(year, currentMonth.getMonth(), 1))
+  }
+
+  // Generate year options (from 1900 to 2200 for wide range)
+  const years = Array.from({ length: 300 }, (_, i) => 1900 + i)
 
   const handleDayClick = (day: number) => {
     const newDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day)
@@ -102,27 +128,78 @@ function Calendar({
   return (
     <div className={cn('p-3 bg-background', className)} data-slot="calendar">
       <div className="flex items-center justify-between mb-4">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={prevMonth}
-          disabled={disabled}
-          className="h-7 w-7"
-        >
-          <ChevronLeftIcon className="h-4 w-4" />
-        </Button>
-        <div className="font-medium text-sm">
-          {monthNames[currentMonth.getMonth()]} {currentMonth.getFullYear()}
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={prevYear}
+            className="h-7 w-7"
+            title="Previous year"
+          >
+            <ChevronsLeftIcon className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={prevMonth}
+            className="h-7 w-7"
+            title="Previous month"
+          >
+            <ChevronLeftIcon className="h-4 w-4" />
+          </Button>
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={nextMonth}
-          disabled={disabled}
-          className="h-7 w-7"
-        >
-          <ChevronRightIcon className="h-4 w-4" />
-        </Button>
+        <div className="flex items-center gap-2">
+          <Select
+            value={currentMonth.getMonth().toString()}
+            onValueChange={(value) => handleMonthChange(parseInt(value))}
+          >
+            <SelectTrigger className="h-7 w-[120px] text-sm font-medium">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {monthNames.map((month, index) => (
+                <SelectItem key={index} value={index.toString()}>
+                  {month}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select
+            value={currentMonth.getFullYear().toString()}
+            onValueChange={(value) => handleYearChange(parseInt(value))}
+          >
+            <SelectTrigger className="h-7 w-[80px] text-sm font-medium">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="max-h-[200px]">
+              {years.map((year) => (
+                <SelectItem key={year} value={year.toString()}>
+                  {year}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={nextMonth}
+            className="h-7 w-7"
+            title="Next month"
+          >
+            <ChevronRightIcon className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={nextYear}
+            className="h-7 w-7"
+            title="Next year"
+          >
+            <ChevronsRightIcon className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
       <div className="grid grid-cols-7 gap-1 mb-2">
         {dayNames.map((day) => (

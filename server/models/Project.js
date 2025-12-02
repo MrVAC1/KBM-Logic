@@ -241,6 +241,11 @@ const projectSchema = new mongoose.Schema({
     unique: true,
     sparse: true,
   },
+  // Target completion date (deadline) for the project
+  deadline: {
+    type: Date,
+    default: null,
+  },
   isDeleted: {
     type: Boolean,
     default: false,

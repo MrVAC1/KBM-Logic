@@ -76,9 +76,18 @@ export const getInvestorReport = async (req, res) => {
     const projectStartDate = project.createdAt || new Date();
     projectStartDate.setHours(0, 0, 0, 0);
 
-    // Calculate project duration in months
+    // Calculate project duration in months (elapsed time)
     const monthsDiff = (today.getTime() - projectStartDate.getTime()) / (1000 * 60 * 60 * 24 * 30.44);
     const projectDurationMonths = Math.max(0.1, monthsDiff); // Minimum 0.1 months to avoid division by zero
+
+    // Calculate total planned duration if deadline exists
+    let totalPlannedDurationMonths = null;
+    if (project.deadline) {
+      const deadlineDate = new Date(project.deadline);
+      deadlineDate.setHours(0, 0, 0, 0);
+      const totalMonths = (deadlineDate.getTime() - projectStartDate.getTime()) / (1000 * 60 * 60 * 24 * 30.44);
+      totalPlannedDurationMonths = Math.max(0.1, totalMonths);
+    }
 
     // CRITICAL: Use the EXACT same function as Financial Dashboard
     // This ensures 100% data parity - single source of truth
@@ -264,6 +273,11 @@ export const getInvestorReport = async (req, res) => {
       burnRate: {
         monthly: Math.round(burnRate * 100) / 100,
         daily: Math.round((burnRate / 30.44) * 100) / 100,
+      },
+      projectDuration: {
+        elapsedMonths: Math.round(projectDurationMonths * 100) / 100,
+        totalPlannedMonths: totalPlannedDurationMonths ? Math.round(totalPlannedDurationMonths * 100) / 100 : null,
+        deadline: project.deadline || null,
       },
       runway: {
         months: runway === Infinity ? null : Math.round(runway * 100) / 100,

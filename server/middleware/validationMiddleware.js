@@ -27,6 +27,7 @@ const schemas = {
         currency: Joi.string(),
       })
     ),
+    deadline: Joi.date().allow(null),
     workSchedule: Joi.object({
       workingDaysPerWeek: Joi.number().min(1).max(7),
       daysOffPerWeek: Joi.number().min(0).max(6),
