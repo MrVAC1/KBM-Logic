@@ -173,8 +173,8 @@ export const memberSettings = {
 };
 
 export const reports = {
-  getInvestorReport: (projectId) => 
-    apiClient.get(`/projects/${projectId}/reports/investor`),
+  getInvestorReport: (projectId, range = 'all') => 
+    apiClient.get(`/projects/${projectId}/reports/investor`, { params: { range } }),
 };
 
 export default apiClient;

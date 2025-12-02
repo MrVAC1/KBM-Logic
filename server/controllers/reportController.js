@@ -13,21 +13,22 @@ import { normalizeDate } from '../utils/dateUtils.js';
  * @param {String} projectId - Project ID
  * @param {Object} project - Project document
  * @param {Date} today - Target date (today)
+ * @param {Date} [periodStart] - Optional start date for time range filtering
  * @returns {Promise<Object>} - { currentPV, currentAC }
  */
-async function getFinancialDashboardValues(projectId, project, today) {
+async function getFinancialDashboardValues(projectId, project, today, periodStart = null) {
   // Use the EXACT same functions and logic as Financial Dashboard
   let currentPV = 0;
   let currentAC = 0;
 
   try {
-    currentPV = await calculatePV(project, today);
+    currentPV = await calculatePV(project, today, periodStart);
   } catch (error) {
     logger.warn(`Error calculating current PV: ${error.message}`);
   }
 
   try {
-    currentAC = await calculateAC(project, today);
+    currentAC = await calculateAC(project, today, periodStart);
   } catch (error) {
     logger.warn(`Error calculating current AC: ${error.message}`);
   }
@@ -60,6 +61,7 @@ export const getInvestorReport = async (req, res) => {
   try {
     const { projectId } = req.params;
     const userId = req.dbUser._id;
+    const { range = 'all' } = req.query; // Get time range filter: 'all' | 'month' | 'year'
     
     const project = await Project.findById(projectId);
 
@@ -77,8 +79,30 @@ export const getInvestorReport = async (req, res) => {
     const projectStartDate = project.createdAt || new Date();
     projectStartDate.setHours(0, 0, 0, 0);
 
+    // Calculate periodStart based on range filter
+    let periodStart = null;
+    let periodStartDate = null;
+    
+    if (range === 'month') {
+      // Start of current month
+      periodStartDate = new Date(today.getFullYear(), today.getMonth(), 1);
+      periodStartDate.setHours(0, 0, 0, 0);
+      periodStart = periodStartDate;
+    } else if (range === 'year') {
+      // Start of current year
+      periodStartDate = new Date(today.getFullYear(), 0, 1);
+      periodStartDate.setHours(0, 0, 0, 0);
+      periodStart = periodStartDate;
+    } else {
+      // 'all' - use project start date (or null for no lower limit)
+      periodStart = null;
+      periodStartDate = projectStartDate;
+    }
+
     // Calculate project duration in months (elapsed time)
-    const monthsDiff = (today.getTime() - projectStartDate.getTime()) / (1000 * 60 * 60 * 24 * 30.44);
+    // If a specific range is selected, calculate duration from periodStart to today
+    const startDateForDuration = periodStart || projectStartDate;
+    const monthsDiff = (today.getTime() - startDateForDuration.getTime()) / (1000 * 60 * 60 * 24 * 30.44);
     const projectDurationMonths = Math.max(0.1, monthsDiff); // Minimum 0.1 months to avoid division by zero
 
     // Calculate total planned duration using effective deadline
@@ -103,7 +127,8 @@ export const getInvestorReport = async (req, res) => {
 
     // CRITICAL: Use the EXACT same function as Financial Dashboard
     // This ensures 100% data parity - single source of truth
-    const { currentPV, currentAC } = await getFinancialDashboardValues(projectId, project, today);
+    // Pass periodStart to filter calculations by time range
+    const { currentPV, currentAC } = await getFinancialDashboardValues(projectId, project, today, periodStart);
 
     // Verification logging - these MUST match Financial Dashboard
     console.log('[Investor Report] Financial Data Verification:', {
@@ -321,6 +346,11 @@ export const getInvestorReport = async (req, res) => {
         startDate: projectStartDate,
         currentDate: today,
         deadline: project.deadline || null, // Include project deadline
+      },
+      timeRange: {
+        range: range, // 'all' | 'month' | 'year'
+        periodStart: periodStartDate ? periodStartDate.toISOString() : null, // ISO string for JSON
+        periodEnd: today.toISOString(), // Always ends at today
       },
       burnRate: {
         monthly: Math.round(burnRate * 100) / 100,

@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Download, Battery, BatteryLow, BatteryMedium, BatteryFull, TrendingUp, TrendingDown, AlertTriangle, CheckCircle2, Users, X } from "lucide-react"
 import { reports as reportsAPI } from "@/services/api"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Area, AreaChart, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
 import html2canvas from "html2canvas"
 import jsPDF from "jspdf"
@@ -50,6 +51,11 @@ interface InvestorReportData {
     description: string
     startDate: string
     currentDate: string
+  }
+  timeRange?: {
+    range: 'all' | 'month' | 'year'
+    periodStart: string | null
+    periodEnd: string
   }
   burnRate: {
     monthly: number
@@ -112,13 +118,14 @@ export function InvestorReportModal({
   const [reportData, setReportData] = useState<InvestorReportData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false)
+  const [timeRange, setTimeRange] = useState<'all' | 'month' | 'year'>('all')
   const reportContentRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (open && projectId) {
       fetchReportData()
     }
-  }, [open, projectId])
+  }, [open, projectId, timeRange])
 
   // Inject custom scrollbar styles
   useEffect(() => {
@@ -136,7 +143,7 @@ export function InvestorReportModal({
     setError(null)
     
     try {
-      const response = await reportsAPI.getInvestorReport(projectId)
+      const response = await reportsAPI.getInvestorReport(projectId, timeRange)
       const data = response.data?.data || response.data
       setReportData(data)
     } catch (err) {
@@ -319,10 +326,11 @@ export function InvestorReportModal({
         }
       }
 
-      // Generate filename with date
+      // Generate filename with date and time range
       const dateStr = new Date().toISOString().split('T')[0]
       const sanitizedName = reportData.project.name.replace(/[^a-zA-Z0-9_-]/g, '_')
-      const filename = `Project_Report_${sanitizedName}_${dateStr}.pdf`
+      const rangeLabel = timeRange === 'all' ? 'AllTime' : timeRange === 'month' ? 'ThisMonth' : 'ThisYear'
+      const filename = `Investor_Report_${sanitizedName}_${rangeLabel}_${dateStr}.pdf`
 
       // Save PDF
       pdf.save(filename)
@@ -469,6 +477,16 @@ export function InvestorReportModal({
               </DialogDescription>
             </div>
             <div className="flex items-center gap-2 shrink-0">
+              <Select value={timeRange} onValueChange={(value: 'all' | 'month' | 'year') => setTimeRange(value)}>
+                <SelectTrigger className="w-[140px]">
+                  <SelectValue placeholder="Time Range" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Time</SelectItem>
+                  <SelectItem value="month">This Month</SelectItem>
+                  <SelectItem value="year">This Year</SelectItem>
+                </SelectContent>
+              </Select>
               {reportData && (
                 <Button 
                   onClick={handleDownloadPDF} 
@@ -507,13 +525,32 @@ export function InvestorReportModal({
               <div className="border-b pb-4">
                 <h1 className="text-3xl font-bold">{reportData.project.name}</h1>
                 <p className="text-muted-foreground mt-1">{reportData.project.description}</p>
-                <p className="text-sm text-muted-foreground mt-2">
-                  Report Generated: {new Date(reportData.project?.currentDate || new Date()).toLocaleDateString('en-US', { 
-                    year: 'numeric', 
-                    month: 'long', 
-                    day: 'numeric' 
-                  })}
-                </p>
+                <div className="flex items-center gap-4 mt-2">
+                  <p className="text-sm text-muted-foreground">
+                    Report Generated: {new Date(reportData.project?.currentDate || new Date()).toLocaleDateString('en-US', { 
+                      year: 'numeric', 
+                      month: 'long', 
+                      day: 'numeric' 
+                    })}
+                  </p>
+                  {reportData.timeRange && (
+                    <p className="text-sm text-muted-foreground">
+                      Period: {
+                        reportData.timeRange.periodStart 
+                          ? new Date(reportData.timeRange.periodStart).toLocaleDateString('en-US', { 
+                              year: 'numeric', 
+                              month: 'short', 
+                              day: 'numeric' 
+                            })
+                          : 'Project Start'
+                      } - {new Date(reportData.timeRange.periodEnd).toLocaleDateString('en-US', { 
+                        year: 'numeric', 
+                        month: 'short', 
+                        day: 'numeric' 
+                      })}
+                    </p>
+                  )}
+                </div>
               </div>
 
               {/* Key Metrics Grid */}

@@ -70,3 +70,35 @@ export function isDateAfterOrEqual(date1, date2) {
   return d1.getTime() >= d2.getTime();
 }
 
+/**
+ * Get the end of day for a given date (23:59:59.999)
+ * This is useful for inclusive date range queries where we want to include
+ * all events that happened during the entire day
+ * @param {Date|string|number} date - Date to get end of day for
+ * @returns {Date} - Date with time set to 23:59:59.999
+ */
+export function getEndOfDay(date) {
+  if (!date) {
+    const now = new Date();
+    now.setHours(23, 59, 59, 999);
+    return now;
+  }
+
+  try {
+    const endOfDay = new Date(date);
+    // Check if date is valid
+    if (isNaN(endOfDay.getTime())) {
+      const now = new Date();
+      now.setHours(23, 59, 59, 999);
+      return now;
+    }
+    endOfDay.setHours(23, 59, 59, 999);
+    return endOfDay;
+  } catch (error) {
+    // If date parsing fails, return end of current day
+    const now = new Date();
+    now.setHours(23, 59, 59, 999);
+    return now;
+  }
+}
+

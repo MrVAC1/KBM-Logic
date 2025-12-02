@@ -3,7 +3,7 @@ import Task from '../models/Task.js';
 import User from '../models/User.js';
 import Expense from '../models/Expense.js';
 import logger from '../utils/logger.js';
-import { normalizeDate } from '../utils/dateUtils.js';
+import { normalizeDate, getEndOfDay } from '../utils/dateUtils.js';
 
 /**
  * Get the effective deadline for a project
@@ -119,9 +119,10 @@ export function calculateHourlyRate(monthlySalary, workSchedule) {
  * PV represents the budgeted cost of work scheduled to be completed by a given date
  * @param {Object} project - Project document
  * @param {Date} date - Target date
+ * @param {Date} [startDate] - Optional start date for time range filtering (only include tasks that start >= startDate)
  * @returns {Number} - Planned Value
  */
-export async function calculatePV(project, date) {
+export async function calculatePV(project, date, startDate = null) {
   try {
     const projectId = project._id || project.id;
     const tasks = await Task.find({ projectId })
@@ -136,6 +137,9 @@ export async function calculatePV(project, date) {
     
     // Get effective deadline for tasks without deadlines
     const effectiveDeadline = await getEffectiveDeadline(project, date);
+    
+    // If startDate is provided, normalize it for comparison
+    const periodStartDate = startDate ? normalizeDate(startDate) : null;
 
     for (const task of tasks) {
       // Skip tasks without estimateHours
@@ -163,11 +167,23 @@ export async function calculatePV(project, date) {
         taskStartDate = projectStartDate;
       }
 
+      // If periodStartDate is provided, skip tasks that start before the period
+      if (periodStartDate && taskStartDate.getTime() < periodStartDate.getTime()) {
+        // Task started before period, but might have work during the period
+        // Only include if task deadline is within the period
+        if (taskDeadline.getTime() < periodStartDate.getTime()) {
+          continue; // Task completed before period, skip entirely
+        }
+        // Task started before period but extends into period - adjust startDate to periodStartDate
+        taskStartDate = periodStartDate;
+      }
+
       const startDate = taskStartDate;
       const deadline = taskDeadline;
-      const targetDate = normalizeDate(date);
+      // Use end of day to include all work scheduled for the target date
+      const targetDate = getEndOfDay(date);
 
-      // Skip if date is before task starts
+      // Skip if date is before task starts (compare with start of day for task start)
       if (targetDate.getTime() < startDate.getTime()) {
         continue;
       }
@@ -220,18 +236,32 @@ export async function calculatePV(project, date) {
  * EV represents the budgeted cost of work actually completed by a given date
  * @param {Object} project - Project document
  * @param {Date} date - Target date
+ * @param {Date} [startDate] - Optional start date for time range filtering (only include tasks completed >= startDate)
  * @returns {Number} - Earned Value
  */
-export async function calculateEV(project, date) {
+export async function calculateEV(project, date, startDate = null) {
   try {
     const projectId = project._id || project.id;
     
-    // Get all completed tasks (status === 'Done') that were completed by the target date
-    const completedTasks = await Task.find({
+    // Use end of day to include all tasks completed during the target date
+    // If date is Dec 2nd, we want to include tasks completed at any time on Dec 2nd
+    const endOfTargetDay = getEndOfDay(date);
+    
+    // Build query filter
+    const queryFilter = {
       projectId,
       status: 'Done',
-      updatedAt: { $lte: date }, // Completed before or on the target date
-    })
+      updatedAt: { $lte: endOfTargetDay }, // Completed before or during the target date (inclusive)
+    };
+    
+    // If startDate is provided, only include tasks completed on or after startDate
+    if (startDate) {
+      const startOfPeriod = normalizeDate(startDate);
+      queryFilter.updatedAt.$gte = startOfPeriod; // Add lower bound
+    }
+    
+    // Get all completed tasks that match the filter
+    const completedTasks = await Task.find(queryFilter)
       .populate('assignees', 'monthlySalary')
       .lean();
 
@@ -281,21 +311,35 @@ export async function calculateEV(project, date) {
  * AC represents the actual cost incurred for work performed by a given date
  * @param {Object} project - Project document
  * @param {Date} date - Target date
+ * @param {Date} [startDate] - Optional start date for time range filtering (only include costs from >= startDate)
  * @returns {Number} - Actual Cost
  */
-export async function calculateAC(project, date) {
+export async function calculateAC(project, date, startDate = null) {
   try {
     const projectId = project._id || project.id;
 
-    // Normalize target date for consistent comparison
-    const targetDate = normalizeDate(date);
+    // Use end of day to include all costs incurred during the target date
+    const targetDate = getEndOfDay(date);
+    
+    // If startDate is provided, normalize it for comparison
+    const periodStartDate = startDate ? normalizeDate(startDate) : null;
 
-    // Get cumulative AC from snapshots up to this date
+    // Get cumulative AC from snapshots up to this date (inclusive)
+    // Use normalized snapshot dates for comparison, but compare with end of target day
     if (project.evmSnapshots && project.evmSnapshots.length > 0) {
       const snapshotsUpToDate = project.evmSnapshots.filter(
         snapshot => {
           try {
-            return normalizeDate(snapshot.date).getTime() <= targetDate.getTime();
+            // Normalize snapshot date to start of day, then compare with end of target day
+            const snapshotDate = normalizeDate(snapshot.date);
+            const isWithinRange = snapshotDate.getTime() <= targetDate.getTime();
+            
+            // If periodStartDate is provided, only include snapshots on or after the period start
+            if (periodStartDate && isWithinRange) {
+              return snapshotDate.getTime() >= periodStartDate.getTime();
+            }
+            
+            return isWithinRange;
           } catch (error) {
             logger.warn(`Error normalizing snapshot date: ${error.message}`);
             return false;
@@ -306,13 +350,18 @@ export async function calculateAC(project, date) {
       if (snapshotsUpToDate.length > 0) {
         // Get the latest snapshot before or on the target date
         const latestSnapshot = snapshotsUpToDate[snapshotsUpToDate.length - 1];
+        // If periodStartDate is provided, we need to calculate the difference
+        // For now, return the snapshot value (this assumes snapshots are cumulative)
+        // TODO: If snapshots are not cumulative, we'd need to sum snapshots in the range
         return latestSnapshot.actualCost || 0;
       }
     }
 
-    // If no snapshots, calculate from project start date
+    // If no snapshots, calculate from project start date or period start date
     // Normalize dates to prevent timezone/off-by-one-day errors
     const projectStartDate = normalizeDate(project.createdAt || new Date());
+    // Use periodStartDate if provided, otherwise use projectStartDate
+    const calculationStartDate = periodStartDate || projectStartDate;
     
     // Calculate daily costs from salaries and expenses
     let totalAC = 0;
@@ -325,8 +374,14 @@ export async function calculateAC(project, date) {
       if (user && user.monthlySalary && user.monthlySalary > 0) {
         const dailyRate = calculateDailyRate(user.monthlySalary, project.workSchedule);
         
-        // Calculate days from project start to target date (using normalized dates)
-        const daysSinceStart = Math.max(0, Math.ceil((targetDate.getTime() - projectStartDate.getTime()) / (1000 * 60 * 60 * 24)));
+        // Calculate days from calculation start date to target date
+        // If periodStartDate is provided, only count days within the period
+        const memberStartDate = normalizeDate(member.joinedAt || projectStartDate);
+        const effectiveStartDate = periodStartDate && periodStartDate.getTime() > memberStartDate.getTime() 
+          ? periodStartDate 
+          : memberStartDate;
+        
+        const daysSinceStart = Math.max(0, Math.ceil((targetDate.getTime() - effectiveStartDate.getTime()) / (1000 * 60 * 60 * 24)));
         totalAC += dailyRate * daysSinceStart;
       }
     }
@@ -335,8 +390,13 @@ export async function calculateAC(project, date) {
     const expenses = await Expense.find({ projectId }).lean();
     for (const expense of expenses) {
       const expenseStartDate = normalizeDate(expense.createdAt || projectStartDate);
-      if (targetDate.getTime() >= expenseStartDate.getTime()) {
-        const daysSinceExpenseStart = Math.max(0, Math.ceil((targetDate.getTime() - expenseStartDate.getTime()) / (1000 * 60 * 60 * 24)));
+      // Use the later of expenseStartDate or periodStartDate
+      const effectiveExpenseStartDate = periodStartDate && periodStartDate.getTime() > expenseStartDate.getTime()
+        ? periodStartDate
+        : expenseStartDate;
+      
+      if (targetDate.getTime() >= effectiveExpenseStartDate.getTime()) {
+        const daysSinceExpenseStart = Math.max(0, Math.ceil((targetDate.getTime() - effectiveExpenseStartDate.getTime()) / (1000 * 60 * 60 * 24)));
         
         let expenseCost = 0;
         switch (expense.frequency) {
@@ -375,8 +435,13 @@ export async function calculateAC(project, date) {
         }
         
         const fixedCostStartDate = normalizeDate(projectStartDate);
-        if (targetDate.getTime() >= fixedCostStartDate.getTime()) {
-          const daysSinceStart = Math.max(0, Math.ceil((targetDate.getTime() - fixedCostStartDate.getTime()) / (1000 * 60 * 60 * 24)));
+        // Use the later of fixedCostStartDate or periodStartDate
+        const effectiveFixedCostStartDate = periodStartDate && periodStartDate.getTime() > fixedCostStartDate.getTime()
+          ? periodStartDate
+          : fixedCostStartDate;
+        
+        if (targetDate.getTime() >= effectiveFixedCostStartDate.getTime()) {
+          const daysSinceStart = Math.max(0, Math.ceil((targetDate.getTime() - effectiveFixedCostStartDate.getTime()) / (1000 * 60 * 60 * 24)));
           
           let fixedCostAmount = 0;
           const frequency = fixedCost.frequency || 'monthly'; // Default to monthly if not specified
