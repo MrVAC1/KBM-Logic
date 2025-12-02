@@ -83,7 +83,7 @@
 
 #### MongoDB Connection (`server/config/db.js`)
 ```javascript
-- URI: MONGODB_URI або mongodb://localhost:27017/kbm-logic-v4
+- URI: MONGODB_URI або mongodb://localhost:27017/kbm-logic
 - Timeout: 5 секунд для підключення
 - Автоматичне переподключення
 - Обробка помилок без зупинки сервера

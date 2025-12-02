@@ -45,7 +45,7 @@ Write-Host "Step 2: Checking environment files..." -ForegroundColor Yellow
 if (-not (Test-Path "server\.env")) {
     Write-Host "Creating server/.env file..." -ForegroundColor Green
     @"
-MONGODB_URI=mongodb://localhost:27017/kbm-logic-v4
+MONGODB_URI=mongodb://localhost:27017/kbm-logic
 PORT=5000
 NODE_ENV=development
 CORS_ORIGIN=http://localhost:5173

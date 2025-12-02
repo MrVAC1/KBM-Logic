@@ -72,6 +72,17 @@ export const ProjectProvider = ({ children }) => {
         return;
       }
       
+      // Handle 429 (Too Many Requests) - prevent infinite retries
+      if (err.response?.status === 429) {
+        console.warn('Rate limit exceeded, clearing project ID to prevent infinite retries');
+        localStorage.removeItem('activeProjectId');
+        setCurrentProject(null);
+        setUserAccess(null);
+        setError('RATE_LIMIT_EXCEEDED');
+        setLoading(false);
+        return;
+      }
+      
       console.error('Failed to load project:', err);
       setError(err.response?.data?.message || err.message || 'Failed to load project');
       setCurrentProject(null);

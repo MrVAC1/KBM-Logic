@@ -1,0 +1,12 @@
+# MongoDB Atlas Connection String
+# Copy this content to server/.env file
+
+MONGODB_URI=mongodb+srv://MrVAC:bOvw1g9nyjeyu0AL@cluster0.bj58rji.mongodb.net/kbm-logic?retryWrites=true&w=majority&appName=Cluster0
+
+# Server Configuration
+PORT=5000
+CORS_ORIGIN=http://localhost:5173
+
+# Environment
+NODE_ENV=development
+

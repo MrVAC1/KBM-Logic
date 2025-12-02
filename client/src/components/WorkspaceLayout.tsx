@@ -1,4 +1,4 @@
-import { useEffect } from "react"
+import { useEffect, useRef } from "react"
 import { Outlet, useNavigate, useSearchParams } from "react-router-dom"
 import { toast } from "sonner"
 import { AppSidebar } from "./app-sidebar"
@@ -10,6 +10,11 @@ export default function WorkspaceLayout() {
   const [searchParams] = useSearchParams()
   const { loadProject, currentProject, loading, error, isPendingAccess } = useProject()
 
+  // Use refs to track state and prevent infinite loops
+  const lastLoadedProjectIdRef = useRef<string | null>(null)
+  const isLoadingRef = useRef(false)
+  const lastErrorRef = useRef<string | null>(null)
+
   useEffect(() => {
     // Get active project from URL search params or localStorage
     const projectIdFromUrl = searchParams.get('project')
@@ -18,6 +23,21 @@ export default function WorkspaceLayout() {
     // Prevent infinite loop: check if we already have the correct project loaded
     const currentProjectId = currentProject?.id || currentProject?._id
     
+    // If we're already loading this exact project, skip
+    if (isLoadingRef.current && lastLoadedProjectIdRef.current === activeProjectId) {
+      return
+    }
+    
+    // If we just loaded this project successfully, skip
+    if (lastLoadedProjectIdRef.current === activeProjectId && currentProjectId === activeProjectId && !loading) {
+      return
+    }
+    
+    // If we had an error for this project and it's the same error, skip to prevent retry loop
+    if (lastErrorRef.current === error && error && lastLoadedProjectIdRef.current === activeProjectId) {
+      return
+    }
+    
     if (activeProjectId && !loading) {
       // Only load if we don't have a project OR if the project ID doesn't match
       if (!currentProject || currentProjectId !== activeProjectId) {
@@ -25,21 +45,55 @@ export default function WorkspaceLayout() {
         if (!localStorage.getItem('activeProjectId')) {
           localStorage.setItem('activeProjectId', activeProjectId)
         }
-        loadProject(activeProjectId).catch((err) => {
-          console.error('Failed to load project:', err)
-          // Error handling is done in ProjectContext
-        })
+        
+        // Mark as loading to prevent duplicate calls
+        isLoadingRef.current = true
+        lastLoadedProjectIdRef.current = activeProjectId
+        lastErrorRef.current = null
+        
+        loadProject(activeProjectId)
+          .then(() => {
+            isLoadingRef.current = false
+            lastErrorRef.current = null
+          })
+          .catch((err) => {
+            console.error('Failed to load project:', err)
+            
+            // Handle 429 (Too Many Requests) - clear and stop retrying
+            if (err.response?.status === 429) {
+              console.warn('Rate limit exceeded, clearing project ID to prevent infinite retries')
+              localStorage.removeItem('activeProjectId')
+              lastLoadedProjectIdRef.current = null
+              lastErrorRef.current = 'RATE_LIMIT'
+            } else {
+              lastErrorRef.current = err.response?.status?.toString() || 'ERROR'
+            }
+            
+            isLoadingRef.current = false
+            // Error handling is done in ProjectContext
+          })
+      } else {
+        // Project already loaded and matches
+        lastLoadedProjectIdRef.current = activeProjectId
+        lastErrorRef.current = null
       }
     } else if (!activeProjectId && !loading && !currentProject) {
       // No project selected and no project loaded, redirect to projects list
+      lastLoadedProjectIdRef.current = null
+      lastErrorRef.current = null
       navigate('/projects')
     }
-  }, [loadProject, currentProject, loading, navigate, searchParams])
+  }, [loadProject, currentProject, loading, navigate, searchParams, error])
 
-  // Handle ACCESS_DENIED error - redirect to portfolio with toast
+  // Handle ACCESS_DENIED and RATE_LIMIT errors - redirect to portfolio with toast
   useEffect(() => {
     if (error === 'ACCESS_DENIED') {
       toast.error('Access Denied. Please join the project first.', {
+        duration: 5000,
+      })
+      navigate('/projects', { replace: true })
+    } else if (error === 'RATE_LIMIT_EXCEEDED') {
+      toast.error('Too many requests. Please wait a moment and try again.', {
         duration: 5000,
       })
       navigate('/projects', { replace: true })

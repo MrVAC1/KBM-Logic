@@ -83,8 +83,28 @@ const seedScenarios = async () => {
     console.log('🌱 Starting Scenario Seeding...');
 
     // Connect to database
-    const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/kbm-logic-v4';
-    await mongoose.connect(MONGODB_URI);
+    const MONGODB_URI = process.env.MONGODB_URI;
+    
+    if (!MONGODB_URI) {
+      console.error('❌ MONGODB_URI is not set in .env file');
+      console.error('   Please set MONGODB_URI in server/.env file with your MongoDB Atlas connection string');
+      process.exit(1);
+    }
+    
+    // Security check: Warn if using local MongoDB
+    if (MONGODB_URI.includes('localhost') || MONGODB_URI.includes('127.0.0.1')) {
+      console.warn('⚠️  WARNING: Connection string points to local MongoDB, not Atlas!');
+      console.warn('   Please update MONGODB_URI in .env file to use Atlas connection string.');
+    }
+    
+    const connectionOptions = MONGODB_URI.includes('mongodb+srv://') ? {
+      serverSelectionTimeoutMS: 10000,
+      socketTimeoutMS: 45000,
+      retryWrites: true,
+      w: 'majority'
+    } : {};
+    
+    await mongoose.connect(MONGODB_URI, connectionOptions);
     console.log('✅ Connected to MongoDB');
 
     // Find or create owner

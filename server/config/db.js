@@ -3,13 +3,35 @@ import logger from '../utils/logger.js';
 
 const connectDB = async () => {
   try {
-    const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/kbm-logic-v4';
+    // CRITICAL: MONGODB_URI must be set in .env file for MongoDB Atlas
+    const mongoUri = process.env.MONGODB_URI;
+    
+    if (!mongoUri) {
+      const errorMsg = '❌ MONGODB_URI is not set in environment variables. Please configure server/.env file with your MongoDB Atlas connection string.';
+      logger.error(errorMsg);
+      throw new Error(errorMsg);
+    }
+    
+    // Security check: Warn if using local MongoDB instead of Atlas
+    if (mongoUri.includes('localhost') || mongoUri.includes('127.0.0.1')) {
+      logger.warn('⚠️  WARNING: Connection string points to local MongoDB. Ensure you are using MongoDB Atlas connection string.');
+    }
+    
     logger.info(`Attempting to connect to MongoDB: ${mongoUri.replace(/\/\/.*@/, '//***:***@')}`); // Hide credentials in logs
     
-    const conn = await mongoose.connect(mongoUri, {
-      serverSelectionTimeoutMS: 5000, // Timeout after 5s instead of 30s
+    // MongoDB Atlas connection options
+    const connectionOptions = {
+      serverSelectionTimeoutMS: 10000, // Increased timeout for Atlas (10s)
       socketTimeoutMS: 45000,
-    });
+    };
+    
+    // Add retryWrites for MongoDB Atlas (required for replica sets)
+    if (mongoUri.includes('mongodb+srv://')) {
+      connectionOptions.retryWrites = true;
+      connectionOptions.w = 'majority';
+    }
+    
+    const conn = await mongoose.connect(mongoUri, connectionOptions);
     
     logger.info(`✅ MongoDB Connected: ${conn.connection.host}`);
     logger.info(`✅ Database: ${conn.connection.name}`);
