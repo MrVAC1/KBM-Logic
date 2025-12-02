@@ -43,7 +43,7 @@ const schemas = {
     assignees: Joi.array().items(Joi.string().hex().length(24)).default([]),
     startDate: Joi.date().allow(null),
     deadline: Joi.date().allow(null),
-    estimateHours: Joi.number().min(0).default(0),
+    estimateHours: Joi.number().min(0).required(),
     plannedValue: Joi.number().min(0).default(0),
     risk: Joi.object({
       probability: Joi.number().min(1).max(5).default(1),

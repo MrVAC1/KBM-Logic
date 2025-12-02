@@ -89,9 +89,8 @@ const taskSchema = new mongoose.Schema({
   // Estimated hours required to complete the task
   estimateHours: {
     type: Number,
-    required: false,
+    required: true,
     min: 0,
-    default: 0,
   },
   // Planned Value (PV) - automatically calculated based on estimateHours and assignee daily rates
   plannedValue: {

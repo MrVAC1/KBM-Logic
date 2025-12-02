@@ -142,6 +142,18 @@ export function CreateTaskModal({ open, onOpenChange, onSuccess, projectId }: Cr
       return
     }
 
+    // Validate estimateHours (required field)
+    if (!estimateHours || estimateHours.trim() === '') {
+      toast.error('Estimated hours is required')
+      return
+    }
+
+    const estimateHoursNum = parseFloat(estimateHours)
+    if (isNaN(estimateHoursNum) || estimateHoursNum < 0) {
+      toast.error('Estimated hours must be a valid non-negative number')
+      return
+    }
+
     setIsSubmitting(true)
 
     try {
@@ -172,10 +184,8 @@ export function CreateTaskModal({ open, onOpenChange, onSuccess, projectId }: Cr
         deadline: deadline,
       }
 
-      // Add optional fields
-      if (estimateHours) {
-        taskData.estimateHours = parseFloat(estimateHours) || 0
-      }
+      // Add required estimateHours field
+      taskData.estimateHours = parseFloat(estimateHours)
 
       console.log('📤 Creating task:', { projectId: actualProjectId, taskData })
 
@@ -400,13 +410,14 @@ export function CreateTaskModal({ open, onOpenChange, onSuccess, projectId }: Cr
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="estimate-hours">Estimated Hours</Label>
+              <Label htmlFor="estimate-hours">Estimated Hours *</Label>
               <Input
                 id="estimate-hours"
                 type="number"
                 placeholder="0"
                 min="0"
                 step="0.5"
+                required
                 value={estimateHours}
                 onChange={(e) => setEstimateHours(e.target.value)}
               />
@@ -424,7 +435,7 @@ export function CreateTaskModal({ open, onOpenChange, onSuccess, projectId }: Cr
           >
             Cancel
           </Button>
-          <Button onClick={handleCreate} disabled={!title || !description || !deadline || isSubmitting || !actualProjectId}>
+          <Button onClick={handleCreate} disabled={!title || !description || !deadline || !estimateHours || isSubmitting || !actualProjectId}>
             {isSubmitting ? 'Creating...' : 'Create Task'}
           </Button>
         </div>
