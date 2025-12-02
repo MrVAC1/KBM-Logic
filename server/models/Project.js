@@ -38,6 +38,7 @@ const ALL_PERMISSIONS = [
   'can_invite_users',
   'can_manage_settings',
   'can_manage_salaries',
+  'can_manage_work_schedule',
   'can_delete_project',
 ];
 

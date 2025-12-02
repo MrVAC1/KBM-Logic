@@ -24,7 +24,7 @@ export default function ProjectInfoPage() {
   })
   const [isSaving, setIsSaving] = useState(false)
   
-  const canManageSettings = hasPermission('can_manage_settings')
+  const canManageWorkSchedule = hasPermission('can_manage_work_schedule')
 
   // Get member count (includes owner if owner is in members array)
   const memberCount = currentProject?.members?.length || 0
@@ -65,7 +65,7 @@ export default function ProjectInfoPage() {
   }, [currentProject])
 
   const handleSaveSchedule = async () => {
-    if (!projectId || !canManageSettings) return
+    if (!projectId || !canManageWorkSchedule) return
 
     // Validate: workingDaysPerWeek + daysOffPerWeek should equal 7
     if (workSchedule.workingDaysPerWeek + workSchedule.daysOffPerWeek !== 7) {
@@ -225,7 +225,7 @@ export default function ProjectInfoPage() {
                   </CardTitle>
                   <CardDescription>Configure project working hours and days</CardDescription>
                 </div>
-                {canManageSettings && !isEditingSchedule && (
+                {canManageWorkSchedule && !isEditingSchedule && (
                   <Button
                     variant="ghost"
                     size="sm"

@@ -85,6 +85,14 @@ const permissionLabels: Record<string, { label: string; description: string }> =
     label: 'Manage Settings',
     description: 'Modify project settings and configuration'
   },
+  'can_manage_salaries': {
+    label: 'Manage Salaries',
+    description: 'Edit user salaries in the Costs section'
+  },
+  'can_manage_work_schedule': {
+    label: 'Manage Work Schedule',
+    description: 'Configure project working hours and days per week'
+  },
   'can_delete_project': {
     label: 'Delete Project',
     description: 'Permanently delete the project'
@@ -150,6 +158,8 @@ function RoleCard({ role, allPermissions, permissionLabels, updatingPermissions,
     'can_delete_project',
     'can_manage_settings',
     'can_manage_roles',
+    'can_manage_salaries',
+    'can_manage_work_schedule',
     'can_edit_budget',
   ]
   
@@ -641,6 +651,8 @@ export function RolesTab() {
     'can_delete_project',
     'can_manage_settings',
     'can_manage_roles',
+    'can_manage_salaries',
+    'can_manage_work_schedule',
     'can_edit_budget',
   ]
   

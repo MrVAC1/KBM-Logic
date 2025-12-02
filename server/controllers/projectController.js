@@ -655,6 +655,15 @@ export const updateProject = async (req, res) => {
   try {
     const project = req.project;
     const updates = req.body;
+    const userId = req.dbUser._id;
+
+    // Check permission for work schedule updates
+    if (updates.workSchedule) {
+      const userPermissions = getUserPermissions(project, userId);
+      if (!userPermissions.includes('can_manage_work_schedule')) {
+        return sendError(res, 'Permission denied: You do not have permission to manage work schedule', 403);
+      }
+    }
 
     Object.assign(project, updates);
     await project.save();
