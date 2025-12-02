@@ -720,45 +720,169 @@ export const updateProject = async (req, res) => {
 
     // Validate deadline if provided
     if (updates.deadline !== undefined) {
+      logger.info(`[Deadline Update] Request received:`, {
+        projectId: project._id,
+        userId,
+        rawDeadline: updates.deadline,
+        deadlineType: typeof updates.deadline,
+        isNull: updates.deadline === null,
+        isEmpty: updates.deadline === '',
+      });
+
       // Check permission for deadline management
       const userPermissions = getUserPermissions(project, userId);
       // Owner always has all permissions (including can_manage_deadline via ALL_PERMISSIONS)
       if (!userPermissions.includes('can_manage_deadline')) {
+        logger.warn(`[Deadline Update] Permission denied for user ${userId}`);
         return sendError(res, 'Permission denied: You do not have permission to manage project deadline', 403);
       }
 
       // Validate deadline cannot be earlier than createdAt
-      if (updates.deadline !== null) {
-        const deadlineDate = new Date(updates.deadline);
+      if (updates.deadline !== null && updates.deadline !== '') {
+        let deadlineDate;
+        
+        // Handle different input formats
+        if (updates.deadline instanceof Date) {
+          deadlineDate = new Date(updates.deadline);
+          logger.debug(`[Deadline Update] Received Date object: ${deadlineDate.toISOString()}`);
+        } else if (typeof updates.deadline === 'string') {
+          deadlineDate = new Date(updates.deadline);
+          logger.debug(`[Deadline Update] Parsed string "${updates.deadline}" to: ${deadlineDate.toISOString()}`);
+        } else {
+          logger.error(`[Deadline Update] Invalid deadline type: ${typeof updates.deadline}, value: ${JSON.stringify(updates.deadline)}`);
+          return sendError(res, 'Невірний формат дати дедлайну', 400);
+        }
+        
         const createdAtDate = new Date(project.createdAt);
         
         if (isNaN(deadlineDate.getTime())) {
-          return sendError(res, 'Invalid deadline date format', 400);
+          logger.error(`[Deadline Update] Invalid deadline date format: ${updates.deadline}`);
+          return sendError(res, 'Невірний формат дати дедлайну', 400);
         }
 
-        if (deadlineDate.getTime() < createdAtDate.getTime()) {
-          return sendError(res, 'Deadline cannot be earlier than project creation date', 400);
+        // Normalize dates to start of day for comparison
+        const deadlineNormalized = new Date(deadlineDate);
+        deadlineNormalized.setHours(0, 0, 0, 0);
+        const createdAtNormalized = new Date(createdAtDate);
+        createdAtNormalized.setHours(0, 0, 0, 0);
+
+        logger.debug(`[Deadline Update] Date comparison:`, {
+          deadline: deadlineNormalized.toISOString(),
+          createdAt: createdAtNormalized.toISOString(),
+          deadlineTime: deadlineNormalized.getTime(),
+          createdAtTime: createdAtNormalized.getTime(),
+          isValid: deadlineNormalized.getTime() > createdAtNormalized.getTime(),
+        });
+
+        if (deadlineNormalized.getTime() <= createdAtNormalized.getTime()) {
+          logger.warn(`[Deadline Update] Validation failed: Deadline (${deadlineNormalized.toISOString()}) is not after createdAt (${createdAtNormalized.toISOString()})`);
+          return sendError(res, 'Дедлайн не може бути раніше або дорівнювати даті створення проекту', 400);
         }
+        
+        // Normalize deadline to start of day before saving (ensure it's a valid Date object)
+        // Create a fresh Date object to ensure Mongoose recognizes it properly
+        updates.deadline = new Date(deadlineNormalized.getTime());
+        logger.info(`[Deadline Update] Deadline validated and normalized: ${updates.deadline.toISOString()}`);
+      } else if (updates.deadline === '' || updates.deadline === null) {
+        // Setting deadline to null/empty
+        updates.deadline = null;
+        logger.info(`[Deadline Update] Clearing deadline (setting to null)`);
       }
     }
 
-    Object.assign(project, updates);
-    await project.save();
+    // Log updates before applying
+    if (updates.deadline !== undefined) {
+      logger.info(`[Deadline Update] Applying update:`, {
+        before: project.deadline,
+        after: updates.deadline,
+        afterType: typeof updates.deadline,
+        afterIsDate: updates.deadline instanceof Date,
+      });
+    }
 
-    sendSuccess(res, {
-      id: project._id,
-      name: project.name,
-      description: project.description,
-      fixedCosts: project.fixedCosts,
-      deadline: project.deadline,
-      workSchedule: project.workSchedule || {
-        workingDaysPerWeek: 5,
-        daysOffPerWeek: 2,
-        hoursPerDay: 8,
-      },
-    });
+    Object.assign(project, updates);
+
+    // Log project state before save
+    if (updates.deadline !== undefined) {
+      logger.info(`[Deadline Update] Project state before save:`, {
+        deadline: project.deadline,
+        deadlineType: typeof project.deadline,
+        deadlineIsDate: project.deadline instanceof Date,
+        deadlineValue: project.deadline ? project.deadline.toString() : null,
+      });
+    }
+
+    try {
+      await project.save();
+      
+      if (updates.deadline !== undefined) {
+        logger.info(`[Deadline Update] Project saved successfully:`, {
+          deadline: project.deadline,
+          deadlineType: typeof project.deadline,
+        });
+      }
+
+      sendSuccess(res, {
+        id: project._id,
+        name: project.name,
+        description: project.description,
+        fixedCosts: project.fixedCosts,
+        deadline: project.deadline,
+        workSchedule: project.workSchedule || {
+          workingDaysPerWeek: 5,
+          daysOffPerWeek: 2,
+          hoursPerDay: 8,
+        },
+      });
+    } catch (saveError) {
+      logger.error(`[Deadline Update] Save error:`, {
+        errorName: saveError.name,
+        errorMessage: saveError.message,
+        errorStack: saveError.stack,
+        deadlineValue: updates.deadline,
+        deadlineType: typeof updates.deadline,
+        projectDeadline: project.deadline,
+        projectDeadlineType: typeof project.deadline,
+      });
+
+      // Handle Mongoose validation errors
+      if (saveError.name === 'ValidationError') {
+        const errorMessages = Object.values(saveError.errors || {}).map(err => err.message).join(', ');
+        logger.error(`[Deadline Update] Validation error: ${errorMessages}`);
+        return sendError(res, `Помилка валідації: ${errorMessages}`, 400);
+      }
+
+      // Handle Mongoose cast errors
+      if (saveError.name === 'CastError') {
+        logger.error(`[Deadline Update] Cast error:`, {
+          path: saveError.path,
+          value: saveError.value,
+          kind: saveError.kind,
+        });
+        return sendError(res, `Невірний формат даних для поля ${saveError.path}: ${saveError.message}`, 400);
+      }
+
+      // Re-throw to be caught by outer catch
+      throw saveError;
+    }
   } catch (error) {
-    logger.error(`Update Project Error: ${error.message}`, { error });
+    logger.error(`Update Project Error: ${error.message}`, { 
+      error,
+      errorName: error.name,
+      errorStack: error.stack,
+      projectId: req.project?._id,
+      userId: req.dbUser?._id,
+    });
+    
+    // Return more specific error messages
+    if (error.name === 'ValidationError') {
+      const errorMessages = Object.values(error.errors || {}).map(err => err.message).join(', ');
+      return sendError(res, `Помилка валідації: ${errorMessages}`, 400);
+    }
+    if (error.name === 'CastError') {
+      return sendError(res, `Невірний формат даних: ${error.message}`, 400);
+    }
+    
     sendError(res, 'Failed to update project', 500);
   }
 };

@@ -10,7 +10,9 @@
     "seed": "node seed.js",
     "seed:demo": "node scripts/seed-demo.js",
     "verify:demo": "node scripts/verify-demo.js",
-    "debug:ev": "node scripts/debug-ev.js"
+    "debug:ev": "node scripts/debug-ev.js",
+    "cleanup:permissions": "node scripts/cleanup-permissions.js",
+    "fix:deadline-permissions": "node scripts/fix-deadline-permissions.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

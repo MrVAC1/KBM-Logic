@@ -142,22 +142,51 @@ export default function ProjectInfoPage() {
   }
 
   const handleSaveDeadline = async () => {
-    if (!projectId || !canManageDeadline) return
+    if (!projectId || !canManageDeadline) {
+      toast.error('You do not have permission to manage project deadline')
+      return
+    }
 
-    // Validate deadline cannot be earlier than createdAt
+    // Validate deadline cannot be earlier than or equal to createdAt
     if (deadline) {
       const createdAtDate = new Date(currentProject.createdAt)
-      if (deadline.getTime() < createdAtDate.getTime()) {
-        toast.error('Deadline cannot be earlier than project creation date')
+      createdAtDate.setHours(0, 0, 0, 0)
+      const deadlineDate = new Date(deadline)
+      deadlineDate.setHours(0, 0, 0, 0)
+      
+      if (deadlineDate.getTime() <= createdAtDate.getTime()) {
+        toast.error('Дедлайн не може бути раніше або дорівнювати даті створення проекту')
         return
       }
     }
 
     setIsSaving(true)
     try {
-      await projectsAPI.update(projectId, {
-        deadline: deadline ? deadline.toISOString() : null,
+      // Prepare deadline value - ensure it's a valid ISO string or null
+      let deadlineValue: string | null = null;
+      if (deadline) {
+        // Ensure deadline is a valid Date object
+        const deadlineDate = deadline instanceof Date ? deadline : new Date(deadline);
+        if (isNaN(deadlineDate.getTime())) {
+          toast.error('Невірна дата дедлайну')
+          setIsSaving(false)
+          return
+        }
+        deadlineValue = deadlineDate.toISOString();
+        console.log('[Frontend] Sending deadline update:', {
+          originalDeadline: deadline,
+          isoString: deadlineValue,
+          dateObject: deadlineDate,
+        });
+      } else {
+        console.log('[Frontend] Clearing deadline (sending null)');
+      }
+
+      const response = await projectsAPI.update(projectId, {
+        deadline: deadlineValue,
       })
+      
+      console.log('[Frontend] Deadline update successful:', response.data);
       toast.success('Project deadline updated successfully')
       setIsEditingDeadline(false)
       // Reload project to get updated data
@@ -165,8 +194,27 @@ export default function ProjectInfoPage() {
         await loadProject(projectId)
       }
     } catch (error: any) {
-      console.error('Failed to update deadline:', error)
-      toast.error(error.response?.data?.message || 'Failed to update deadline')
+      console.error('[Frontend] Failed to update deadline:', {
+        error,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        message: error.message,
+        deadlineSent: deadline ? deadline.toISOString() : null,
+      });
+      
+      const errorMessage = error.response?.data?.message || error.message || 'Failed to update deadline'
+      toast.error(errorMessage)
+      
+      // If permission error, suggest running migration
+      if (error.response?.status === 403) {
+        console.warn('Permission denied. Run migration script: node server/scripts/fix-deadline-permissions.js')
+      }
+      
+      // If validation error, show specific message
+      if (error.response?.status === 400) {
+        console.error('Validation error details:', error.response?.data);
+      }
     } finally {
       setIsSaving(false)
     }
@@ -231,10 +279,10 @@ export default function ProjectInfoPage() {
                 <span className="text-sm text-foreground">{formattedDate}</span>
               </div>
 
-              {/* Target Completion Date (Deadline) */}
+              {/* Target Completion Date (Deadline) - Always visible */}
               <div className="flex items-center justify-between py-2 border-b border-border">
                 <span className="text-sm text-muted-foreground">Target Completion Date</span>
-                {isEditingDeadline ? (
+                {isEditingDeadline && canManageDeadline ? (
                   <div className="flex items-center gap-2">
                     <Popover>
                       <PopoverTrigger asChild>
@@ -257,10 +305,12 @@ export default function ProjectInfoPage() {
                           onSelect={setDeadline}
                           initialFocus
                           disabled={(date) => {
-                            // Disable dates before project creation
+                            // Disable dates before or equal to project creation
                             const createdAtDate = new Date(currentProject.createdAt)
                             createdAtDate.setHours(0, 0, 0, 0)
-                            return date < createdAtDate
+                            const checkDate = new Date(date)
+                            checkDate.setHours(0, 0, 0, 0)
+                            return checkDate <= createdAtDate
                           }}
                         />
                       </PopoverContent>
@@ -270,6 +320,7 @@ export default function ProjectInfoPage() {
                       size="sm"
                       onClick={() => setDeadline(undefined)}
                       className="text-xs"
+                      disabled={isSaving}
                     >
                       Clear
                     </Button>
@@ -304,6 +355,7 @@ export default function ProjectInfoPage() {
                         size="sm"
                         onClick={() => setIsEditingDeadline(true)}
                         className="h-6 w-6 p-0"
+                        title="Edit deadline"
                       >
                         <Edit2 className="h-3 w-3" />
                       </Button>
