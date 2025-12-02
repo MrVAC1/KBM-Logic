@@ -6,6 +6,58 @@ import logger from '../utils/logger.js';
 import { normalizeDate } from '../utils/dateUtils.js';
 
 /**
+ * Get the effective deadline for a project
+ * Priority A: project.deadline if set
+ * Priority B: Latest deadline among all tasks
+ * Priority C: Today or Project Start + 30 days (to avoid division by zero)
+ * @param {Object} project - Project document
+ * @param {Date} today - Current date (defaults to new Date())
+ * @returns {Promise<Date>} - Effective deadline date
+ */
+export async function getEffectiveDeadline(project, today = new Date()) {
+  try {
+    // Priority A: Use project.deadline if set
+    if (project.deadline) {
+      return normalizeDate(project.deadline);
+    }
+
+    // Priority B: Find latest deadline among all tasks
+    const projectId = project._id || project.id;
+    const tasks = await Task.find({ projectId })
+      .select('deadline')
+      .lean();
+
+    if (tasks && tasks.length > 0) {
+      const taskDeadlines = tasks
+        .map(t => t.deadline ? normalizeDate(t.deadline) : null)
+        .filter(d => d !== null)
+        .sort((a, b) => b.getTime() - a.getTime()); // Sort descending (latest first)
+
+      if (taskDeadlines.length > 0) {
+        return taskDeadlines[0]; // Return latest task deadline
+      }
+    }
+
+    // Priority C: Default to Today or Project Start + 30 days (whichever is later)
+    const projectStartDate = normalizeDate(project.createdAt || new Date());
+    const todayNormalized = normalizeDate(today);
+    const defaultDeadline = new Date(projectStartDate);
+    defaultDeadline.setDate(defaultDeadline.getDate() + 30); // Add 30 days
+
+    // Return the later of: today or project start + 30 days
+    return todayNormalized.getTime() > defaultDeadline.getTime() 
+      ? todayNormalized 
+      : defaultDeadline;
+  } catch (error) {
+    logger.error(`Get Effective Deadline Error: ${error.message}`, { error });
+    // Fallback: return today + 30 days
+    const fallbackDate = new Date(today);
+    fallbackDate.setDate(fallbackDate.getDate() + 30);
+    return normalizeDate(fallbackDate);
+  }
+}
+
+/**
  * Calculate daily rate for a user based on monthly salary and work schedule
  * @param {Number} monthlySalary - Monthly salary
  * @param {Object} workSchedule - Project work schedule
@@ -78,19 +130,41 @@ export async function calculatePV(project, date) {
 
     let totalPV = 0;
 
+    // Get project deadline for fallback
+    const projectStartDate = normalizeDate(project.createdAt || new Date());
+    const projectDeadline = project.deadline ? normalizeDate(project.deadline) : null;
+    
+    // Get effective deadline for tasks without deadlines
+    const effectiveDeadline = await getEffectiveDeadline(project, date);
+
     for (const task of tasks) {
       // Skip tasks without estimateHours
       if (!task.estimateHours || task.estimateHours === 0) {
         continue;
       }
 
-      // Skip tasks without startDate or deadline
-      if (!task.startDate || !task.deadline) {
-        continue;
+      // Use project deadline as fallback if task doesn't have a deadline
+      // If no project deadline, use effective deadline (latest task or default)
+      let taskDeadline = null;
+      if (task.deadline) {
+        taskDeadline = normalizeDate(task.deadline);
+      } else if (projectDeadline) {
+        taskDeadline = projectDeadline;
+      } else {
+        // Use effective deadline (latest task deadline or default)
+        taskDeadline = effectiveDeadline;
       }
 
-      const startDate = normalizeDate(task.startDate);
-      const deadline = normalizeDate(task.deadline);
+      // Use project start date as fallback if task doesn't have startDate
+      let taskStartDate = null;
+      if (task.startDate) {
+        taskStartDate = normalizeDate(task.startDate);
+      } else {
+        taskStartDate = projectStartDate;
+      }
+
+      const startDate = taskStartDate;
+      const deadline = taskDeadline;
       const targetDate = normalizeDate(date);
 
       // Skip if date is before task starts

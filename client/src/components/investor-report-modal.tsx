@@ -79,8 +79,10 @@ interface InvestorReportData {
     completedTasks: number
     totalTasks: number
     completedPercentage: number
-    timeElapsedPercentage: number
-    isAheadOfSchedule: boolean
+    timeElapsedPercentage: number | null // null for ongoing projects without deadline
+    isAheadOfSchedule: boolean | null // null if timeElapsedPercentage is null
+    hasValidDeadline?: boolean // Flag indicating if deadline is valid (not default)
+    effectiveDeadline?: string | Date // The effective deadline used for calculations
   }
   team: {
     roleDistribution: Record<string, number>
@@ -380,31 +382,58 @@ export function InvestorReportModal({
     const today = new Date(reportData.project?.currentDate || new Date())
     const startDate = new Date(reportData.project?.startDate || new Date())
     
-    // Generate monthly data points
-    for (let i = 5; i >= 0; i--) {
-      const date = new Date(today)
-      date.setMonth(date.getMonth() - i)
-      
-      if (date >= startDate) {
+    // Determine end date for timeline using effective deadline from roadmapStatus
+    // Priority: effectiveDeadline -> project.deadline -> extend 6 months from today
+    let endDate: Date
+    if (reportData.roadmapStatus?.effectiveDeadline) {
+      endDate = new Date(reportData.roadmapStatus.effectiveDeadline)
+    } else if (reportData.project?.deadline) {
+      endDate = new Date(reportData.project.deadline)
+    } else {
+      // Fallback: extend 6 months from today
+      endDate = new Date(today)
+      endDate.setMonth(endDate.getMonth() + 6)
+    }
+    
+    // Calculate total project duration
+    const totalDurationMs = endDate.getTime() - startDate.getTime()
+    const totalMonths = Math.max(1, totalDurationMs / (1000 * 60 * 60 * 24 * 30.44))
+    
+    // Generate monthly data points from start to end date
+    const currentDate = new Date(startDate)
+    currentDate.setDate(1) // Start from first day of month
+    
+    while (currentDate <= endDate) {
+      if (currentDate >= startDate) {
         // Calculate approximate values for each month
-        const monthsSinceStart = (date.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 30.44)
+        const monthsSinceStart = (currentDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 30.44)
         const plannedTotal = reportData.financials?.plannedTotal ?? 0
         const actualTotal = reportData.financials?.actualTotal ?? 0
+        
+        // Linear distribution: planned value increases proportionally to time elapsed
         const plannedValue = Math.min(
           plannedTotal,
-          (plannedTotal * monthsSinceStart) / 6
-        )
-        const actualValue = Math.min(
-          actualTotal,
-          (actualTotal * monthsSinceStart) / 6
+          (plannedTotal * monthsSinceStart) / totalMonths
         )
         
+        // Actual value: only up to current date (today)
+        const actualValue = currentDate <= today
+          ? Math.min(
+              actualTotal,
+              (actualTotal * monthsSinceStart) / totalMonths
+            )
+          : null // Don't show actual for future dates
+        
         data.push({
-          month: date.toLocaleDateString('en-US', { month: 'short' }),
+          month: currentDate.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
           planned: Math.max(0, plannedValue),
-          actual: Math.max(0, actualValue),
+          actual: actualValue !== null ? Math.max(0, actualValue) : null,
+          date: new Date(currentDate),
         })
       }
+      
+      // Move to next month
+      currentDate.setMonth(currentDate.getMonth() + 1)
     }
     
     // Ensure at least 2 data points for visible chart
@@ -660,26 +689,43 @@ export function InvestorReportModal({
                       </div>
                       <Progress value={reportData.roadmapStatus.completedPercentage} className="h-3" />
                     </div>
-                    <div>
-                      <div className="flex justify-between text-sm mb-2">
-                        <span>Time Elapsed</span>
-                        <span className="font-semibold">{reportData.roadmapStatus.timeElapsedPercentage.toFixed(1)}%</span>
-                      </div>
-                      <Progress value={reportData.roadmapStatus.timeElapsedPercentage} className="h-3" />
-                    </div>
-                    <div className="mt-4 p-4 bg-muted/50 rounded-lg">
-                      <p className="text-sm font-medium">
-                        {reportData.roadmapStatus.isAheadOfSchedule ? (
-                          <span className="text-green-500">
-                            ✓ Ahead of Schedule: {((reportData.roadmapStatus.completedPercentage - reportData.roadmapStatus.timeElapsedPercentage)).toFixed(1)}% ahead
-                          </span>
-                        ) : (
-                          <span className="text-warning">
-                            ⚠ Behind Schedule: {((reportData.roadmapStatus.timeElapsedPercentage - reportData.roadmapStatus.completedPercentage)).toFixed(1)}% behind
-                          </span>
+                    {reportData.roadmapStatus.timeElapsedPercentage !== null ? (
+                      <>
+                        <div>
+                          <div className="flex justify-between text-sm mb-2">
+                            <span>Time Elapsed</span>
+                            <span className="font-semibold">{reportData.roadmapStatus.timeElapsedPercentage.toFixed(1)}%</span>
+                          </div>
+                          <Progress value={reportData.roadmapStatus.timeElapsedPercentage} className="h-3" />
+                        </div>
+                        {reportData.roadmapStatus.isAheadOfSchedule !== null && (
+                          <div className="mt-4 p-4 bg-muted/50 rounded-lg">
+                            <p className="text-sm font-medium">
+                              {reportData.roadmapStatus.isAheadOfSchedule ? (
+                                <span className="text-green-500">
+                                  ✓ Ahead of Schedule: {((reportData.roadmapStatus.completedPercentage - (reportData.roadmapStatus.timeElapsedPercentage || 0))).toFixed(1)}% ahead
+                                </span>
+                              ) : (
+                                <span className="text-warning">
+                                  ⚠ Behind Schedule: {(((reportData.roadmapStatus.timeElapsedPercentage || 0) - reportData.roadmapStatus.completedPercentage)).toFixed(1)}% behind
+                                </span>
+                              )}
+                            </p>
+                          </div>
                         )}
-                      </p>
-                    </div>
+                      </>
+                    ) : (
+                      <div className="mt-4 p-4 bg-muted/50 rounded-lg">
+                        <p className="text-sm font-medium text-muted-foreground">
+                          📅 Ongoing Project: No specific deadline set. Progress calculated based on task completion.
+                        </p>
+                        {reportData.roadmapStatus.effectiveDeadline && (
+                          <p className="text-xs text-muted-foreground mt-2">
+                            Estimated completion: {new Date(reportData.roadmapStatus.effectiveDeadline).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>

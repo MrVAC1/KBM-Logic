@@ -9,7 +9,8 @@
     "dev": "nodemon index.js",
     "seed": "node seed.js",
     "seed:demo": "node scripts/seed-demo.js",
-    "verify:demo": "node scripts/verify-demo.js"
+    "verify:demo": "node scripts/verify-demo.js",
+    "debug:ev": "node scripts/debug-ev.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

@@ -1,9 +1,10 @@
 import Project from '../models/Project.js';
 import Task from '../models/Task.js';
 import User from '../models/User.js';
-import { calculatePV, calculateAC, calculateHourlyRate, calculateDailyRate } from '../services/evmEngine.js';
+import { calculatePV, calculateAC, calculateHourlyRate, calculateDailyRate, getEffectiveDeadline } from '../services/evmEngine.js';
 import { sendSuccess, sendError } from '../utils/response.js';
 import logger from '../utils/logger.js';
+import { normalizeDate } from '../utils/dateUtils.js';
 
 /**
  * Get Financial Dashboard Values - EXACT same logic as Financial Dashboard
@@ -80,13 +81,24 @@ export const getInvestorReport = async (req, res) => {
     const monthsDiff = (today.getTime() - projectStartDate.getTime()) / (1000 * 60 * 60 * 24 * 30.44);
     const projectDurationMonths = Math.max(0.1, monthsDiff); // Minimum 0.1 months to avoid division by zero
 
-    // Calculate total planned duration if deadline exists
+    // Calculate total planned duration using effective deadline
     let totalPlannedDurationMonths = null;
-    if (project.deadline) {
-      const deadlineDate = new Date(project.deadline);
-      deadlineDate.setHours(0, 0, 0, 0);
-      const totalMonths = (deadlineDate.getTime() - projectStartDate.getTime()) / (1000 * 60 * 60 * 24 * 30.44);
+    let effectiveDeadlineDate = null;
+    
+    try {
+      effectiveDeadlineDate = await getEffectiveDeadline(project, today);
+      const deadlineDateNormalized = normalizeDate(effectiveDeadlineDate);
+      const totalMonths = (deadlineDateNormalized.getTime() - projectStartDate.getTime()) / (1000 * 60 * 60 * 24 * 30.44);
       totalPlannedDurationMonths = Math.max(0.1, totalMonths);
+    } catch (error) {
+      logger.warn(`Error calculating total planned duration: ${error.message}`);
+      // Fallback: use project.deadline if available, otherwise null
+      if (project.deadline) {
+        const deadlineDate = normalizeDate(project.deadline);
+        const totalMonths = (deadlineDate.getTime() - projectStartDate.getTime()) / (1000 * 60 * 60 * 24 * 30.44);
+        totalPlannedDurationMonths = Math.max(0.1, totalMonths);
+        effectiveDeadlineDate = deadlineDate;
+      }
     }
 
     // CRITICAL: Use the EXACT same function as Financial Dashboard
@@ -115,6 +127,7 @@ export const getInvestorReport = async (req, res) => {
     let runwayDate = null;
     let runwayStatus = 'infinite';
     let runwayMessage = 'Infinite Runway';
+    let fundsRunOutBeforeDeadline = false;
 
     if (burnRate > 0) {
       const runwayMonths = remainingBudget / burnRate;
@@ -123,6 +136,13 @@ export const getInvestorReport = async (req, res) => {
       // Calculate runway date
       runwayDate = new Date(today);
       runwayDate.setMonth(runwayDate.getMonth() + runwayMonths);
+      
+      // Check if funds run out before project deadline
+      if (project.deadline) {
+        const deadlineDate = new Date(project.deadline);
+        deadlineDate.setHours(0, 0, 0, 0);
+        fundsRunOutBeforeDeadline = runwayDate.getTime() < deadlineDate.getTime();
+      }
       
       // Determine runway status
       if (runwayMonths > 6) {
@@ -137,13 +157,22 @@ export const getInvestorReport = async (req, res) => {
         runway = 0;
       }
 
-      // Format runway message
+      // Format runway message with deadline context
       if (runwayMonths < 1 && runwayMonths > 0) {
         runwayMessage = 'Less than 1 month remaining';
+        if (fundsRunOutBeforeDeadline && project.deadline) {
+          runwayMessage += ' (before project deadline)';
+        }
       } else if (runwayMonths <= 0) {
         runwayMessage = 'Funds exhausted';
       } else {
         runwayMessage = `Funds last until ${runwayDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`;
+        if (fundsRunOutBeforeDeadline && project.deadline) {
+          const deadlineFormatted = new Date(project.deadline).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+          runwayMessage += ` (${Math.ceil((new Date(project.deadline).getTime() - runwayDate.getTime()) / (1000 * 60 * 60 * 24))} days before deadline: ${deadlineFormatted})`;
+        } else if (project.deadline && runwayDate.getTime() >= new Date(project.deadline).getTime()) {
+          runwayMessage += ' (sufficient until deadline)';
+        }
       }
     } else {
       // Burn Rate is 0, return "Infinite Runway"
@@ -181,32 +210,54 @@ export const getInvestorReport = async (req, res) => {
     const completedTasks = allTasks.filter(task => task.status === 'Done').length;
     const completedPercentage = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
 
-    // Calculate time elapsed percentage
-    // Get project end date (from latest task deadline or default 6 months from start)
-    let projectEndDate = new Date(projectStartDate);
-    projectEndDate.setMonth(projectEndDate.getMonth() + 6); // Default 6 months
+    // Calculate time elapsed percentage using Effective Deadline
+    // This handles projects without a specific deadline (Agile/Ongoing projects)
+    let projectEndDate = null;
+    let timeElapsedPercentage = null;
+    let hasValidDeadline = false;
 
-    if (allTasks.length > 0) {
-      const latestDeadline = allTasks
-        .map(t => t.deadline ? new Date(t.deadline) : null)
-        .filter(d => d !== null)
-        .sort((a, b) => b - a)[0];
+    try {
+      // Get effective deadline (Priority: project.deadline -> latest task -> default)
+      projectEndDate = await getEffectiveDeadline(project, today);
       
-      if (latestDeadline && latestDeadline > projectEndDate) {
-        projectEndDate = latestDeadline;
+      // Determine if deadline is valid (not default)
+      // hasValidDeadline = true only if project.deadline exists OR latest task deadline exists
+      hasValidDeadline = !!(project.deadline || (allTasks.length > 0 && allTasks.some(t => t.deadline)));
+
+      // Only calculate percentage if we have a valid end date
+      const totalProjectDays = Math.max(1, Math.ceil((projectEndDate.getTime() - projectStartDate.getTime()) / (1000 * 60 * 60 * 24)));
+      const elapsedDays = Math.max(0, Math.ceil((today.getTime() - projectStartDate.getTime()) / (1000 * 60 * 60 * 24)));
+      
+      // Prevent division by zero and NaN
+      if (totalProjectDays > 0 && !isNaN(totalProjectDays) && !isNaN(elapsedDays)) {
+        timeElapsedPercentage = Math.min(100, Math.max(0, (elapsedDays / totalProjectDays) * 100));
+      } else {
+        timeElapsedPercentage = null; // Mark as invalid
+        hasValidDeadline = false;
       }
+    } catch (error) {
+      logger.warn(`Error calculating time elapsed percentage: ${error.message}`);
+      timeElapsedPercentage = null;
+      hasValidDeadline = false;
+      // Fallback to today + 30 days
+      projectEndDate = new Date(projectStartDate);
+      projectEndDate.setDate(projectEndDate.getDate() + 30);
     }
 
-    const totalProjectDays = Math.max(1, Math.ceil((projectEndDate.getTime() - projectStartDate.getTime()) / (1000 * 60 * 60 * 24)));
-    const elapsedDays = Math.max(0, Math.ceil((today.getTime() - projectStartDate.getTime()) / (1000 * 60 * 60 * 24)));
-    const timeElapsedPercentage = (elapsedDays / totalProjectDays) * 100;
+    // Determine if project is ahead of schedule (only if we have valid time elapsed data)
+    let isAheadOfSchedule = null;
+    if (timeElapsedPercentage !== null && !isNaN(timeElapsedPercentage)) {
+      isAheadOfSchedule = completedPercentage > timeElapsedPercentage;
+    }
 
     const roadmapStatus = {
       completedTasks: completedTasks,
       totalTasks: totalTasks,
       completedPercentage: Math.round(completedPercentage * 100) / 100,
-      timeElapsedPercentage: Math.round(timeElapsedPercentage * 100) / 100,
-      isAheadOfSchedule: completedPercentage > timeElapsedPercentage,
+      timeElapsedPercentage: timeElapsedPercentage !== null ? Math.round(timeElapsedPercentage * 100) / 100 : null,
+      isAheadOfSchedule: isAheadOfSchedule,
+      hasValidDeadline: hasValidDeadline, // Flag to indicate if deadline is valid (not default)
+      effectiveDeadline: projectEndDate ? projectEndDate.toISOString() : null, // The effective deadline used for calculations (ISO string for JSON)
     };
 
     // Team & Financials: Get members with salary data (only for Owner)
@@ -269,6 +320,7 @@ export const getInvestorReport = async (req, res) => {
         description: project.description,
         startDate: projectStartDate,
         currentDate: today,
+        deadline: project.deadline || null, // Include project deadline
       },
       burnRate: {
         monthly: Math.round(burnRate * 100) / 100,
@@ -277,13 +329,16 @@ export const getInvestorReport = async (req, res) => {
       projectDuration: {
         elapsedMonths: Math.round(projectDurationMonths * 100) / 100,
         totalPlannedMonths: totalPlannedDurationMonths ? Math.round(totalPlannedDurationMonths * 100) / 100 : null,
-        deadline: project.deadline || null,
+        deadline: project.deadline || null, // Original project deadline (may be null)
+        effectiveDeadline: effectiveDeadlineDate || null, // Effective deadline used for calculations
+        isDefaultDeadline: !project.deadline && effectiveDeadlineDate !== null, // True if using fallback deadline
       },
       runway: {
         months: runway === Infinity ? null : Math.round(runway * 100) / 100,
         date: runwayDate,
         status: runwayStatus,
         message: runwayMessage,
+        fundsRunOutBeforeDeadline: fundsRunOutBeforeDeadline,
       },
       financials,
       topRisks,
