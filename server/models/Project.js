@@ -218,6 +218,41 @@ const projectSchema = new mongoose.Schema({
     default: false,
     index: true,
   },
+  // EVM (Earned Value Management) snapshots for S-Curve
+  evmSnapshots: [{
+    date: {
+      type: Date,
+      required: true,
+      index: true,
+    },
+    plannedValue: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    actualCost: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    earnedValue: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+  }],
+  // Cumulative actual cost for quick access
+  cumulativeActualCost: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
+  // Working hours per month (default 160 = 20 days * 8 hours)
+  workingHoursPerMonth: {
+    type: Number,
+    default: 160,
+    min: 1,
+  },
 }, {
   timestamps: true,
 });

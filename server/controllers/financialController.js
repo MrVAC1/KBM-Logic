@@ -1,33 +1,121 @@
 import Transaction from '../models/Transaction.js';
 import Task from '../models/Task.js';
-import { calculatePlannedValue, calculateActualCost } from '../services/budgetEngine.js';
+import Project from '../models/Project.js';
+import { calculatePV, calculateEV, calculateAC } from '../services/evmEngine.js';
 import { sendSuccess, sendError } from '../utils/response.js';
 import logger from '../utils/logger.js';
 import { logDataOperation, ensureTransactionInMongo } from '../services/mongoSync.js';
 
 /**
- * Get dashboard stats
+ * Get dashboard stats with EVM data
  * GET /api/projects/:projectId/stats
  */
 export const getDashboardStats = async (req, res) => {
   try {
     const { projectId } = req.params;
-    const project = req.project;
+    const project = await Project.findById(projectId);
 
-    // Calculate actual cost
-    const actualCost = await calculateActualCost(projectId);
+    if (!project) {
+      return sendError(res, 'Project not found', 404);
+    }
 
-    // Calculate planned value (S-curve)
-    const projectStartDate = project.createdAt;
-    const projectEndDate = new Date(projectStartDate);
+    // Get project date range (from creation to 6 months ahead, or latest task deadline)
+    const projectStartDate = project.createdAt || new Date();
+    let projectEndDate = new Date(projectStartDate);
     projectEndDate.setMonth(projectEndDate.getMonth() + 6); // Default 6 months
 
-    const plannedValueCurve = await calculatePlannedValue(
-      projectId,
-      projectStartDate,
-      projectEndDate,
-      project.fixedCosts
-    );
+    // Find latest task deadline to extend end date if needed
+    const tasks = await Task.find({ projectId }).select('deadline').lean();
+    if (tasks && tasks.length > 0) {
+      const latestDeadline = tasks
+        .map(t => t.deadline ? new Date(t.deadline) : null)
+        .filter(d => d !== null)
+        .sort((a, b) => b - a)[0];
+      
+      if (latestDeadline && latestDeadline > projectEndDate) {
+        projectEndDate = latestDeadline;
+      }
+    }
+
+    // Generate date range for S-Curve (daily data points, but limit to reasonable range)
+    const daysDiff = Math.ceil((projectEndDate - projectStartDate) / (1000 * 60 * 60 * 24));
+    // Limit to max 365 days to prevent performance issues
+    const maxDays = Math.min(daysDiff, 365);
+    const evmDataPoints = [];
+
+    // Generate data points for each day (or every 7th day if more than 100 days)
+    const step = maxDays > 100 ? 7 : 1;
+    
+    try {
+      for (let i = 0; i <= maxDays; i += step) {
+        const currentDate = new Date(projectStartDate);
+        currentDate.setDate(projectStartDate.getDate() + i);
+        currentDate.setHours(0, 0, 0, 0);
+
+        // Calculate PV, AC, EV for this date
+        let pv = 0;
+        let ac = 0;
+        let ev = 0;
+
+        try {
+          pv = await calculatePV(project, currentDate);
+        } catch (error) {
+          logger.warn(`Error calculating PV for date ${currentDate.toISOString()}: ${error.message}`);
+        }
+
+        try {
+          ac = await calculateAC(project, currentDate);
+        } catch (error) {
+          logger.warn(`Error calculating AC for date ${currentDate.toISOString()}: ${error.message}`);
+        }
+
+        try {
+          ev = await calculateEV(project, currentDate);
+        } catch (error) {
+          logger.warn(`Error calculating EV for date ${currentDate.toISOString()}: ${error.message}`);
+        }
+
+        evmDataPoints.push({
+          date: currentDate.toISOString().split('T')[0], // YYYY-MM-DD format
+          PV: Math.round(pv * 100) / 100,
+          AC: Math.round(ac * 100) / 100,
+          EV: Math.round(ev * 100) / 100,
+        });
+      }
+    } catch (error) {
+      logger.error(`Error generating EVM data points: ${error.message}`, { error });
+      // Return empty array if generation fails
+    }
+
+    // Get current values (today)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    let currentPV = 0;
+    let currentAC = 0;
+    let currentEV = 0;
+
+    try {
+      currentPV = await calculatePV(project, today);
+    } catch (error) {
+      logger.warn(`Error calculating current PV: ${error.message}`);
+    }
+
+    try {
+      currentAC = await calculateAC(project, today);
+    } catch (error) {
+      logger.warn(`Error calculating current AC: ${error.message}`);
+    }
+
+    try {
+      currentEV = await calculateEV(project, today);
+    } catch (error) {
+      logger.warn(`Error calculating current EV: ${error.message}`);
+    }
+
+    // Calculate variances
+    const scheduleVariance = currentEV - currentPV; // SV = EV - PV
+    const costVariance = currentEV - currentAC; // CV = EV - AC
 
     // Get transactions
     const transactions = await Transaction.find({ projectId })
@@ -36,20 +124,34 @@ export const getDashboardStats = async (req, res) => {
       .limit(10);
 
     // Get tasks summary
-    const tasks = await Task.find({ projectId });
+    const allTasks = await Task.find({ projectId });
     const tasksByStatus = {
-      Todo: tasks.filter(t => t.status === 'Todo').length,
-      'In Progress': tasks.filter(t => t.status === 'In Progress').length,
-      Review: tasks.filter(t => t.status === 'Review').length,
-      Done: tasks.filter(t => t.status === 'Done').length,
+      Todo: allTasks.filter(t => t.status === 'Todo').length,
+      'In Progress': allTasks.filter(t => t.status === 'In Progress').length,
+      Review: allTasks.filter(t => t.status === 'Review').length,
+      Done: allTasks.filter(t => t.status === 'Done').length,
     };
 
     sendSuccess(res, {
-      actualCost,
-      plannedValueCurve,
+      evmDataPoints, // Array of { date, PV, AC, EV } for S-Curve chart
+      current: {
+        PV: Math.round(currentPV * 100) / 100,
+        AC: Math.round(currentAC * 100) / 100,
+        EV: Math.round(currentEV * 100) / 100,
+      },
+      variances: {
+        scheduleVariance: Math.round(scheduleVariance * 100) / 100, // SV = EV - PV
+        costVariance: Math.round(costVariance * 100) / 100, // CV = EV - AC
+      },
       transactions,
       tasksByStatus,
-      totalTasks: tasks.length,
+      totalTasks: allTasks.length,
+      // Legacy fields for backward compatibility
+      actualCost: currentAC,
+      plannedValueCurve: evmDataPoints.map(d => ({
+        date: d.date,
+        plannedValue: d.PV,
+      })),
     });
   } catch (error) {
     logger.error(`Get Stats Error: ${error.message}`, { error });

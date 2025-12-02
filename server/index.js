@@ -9,6 +9,7 @@ import connectDB from './config/db.js';
 import apiRoutes from './routes/api.js';
 import errorHandler from './middleware/errorHandler.js';
 import logger from './utils/logger.js';
+import { startDailyEVMJob } from './services/dailyEVMJob.js';
 
 dotenv.config();
 
@@ -19,6 +20,12 @@ const PORT = process.env.PORT || 5000;
 (async () => {
   try {
     await connectDB();
+    // Start daily EVM calculation cron job only after DB connection
+    try {
+      startDailyEVMJob();
+    } catch (error) {
+      logger.error(`Failed to start EVM cron job: ${error.message}`, { error });
+    }
   } catch (error) {
     logger.error(`Failed to connect to MongoDB on startup: ${error.message}`);
     logger.warn('Server will start, but database operations will fail until MongoDB is available');
@@ -76,6 +83,7 @@ app.use(errorHandler);
 
 app.listen(PORT, () => {
   logger.info(`Server running on port ${PORT}`);
+  // Note: EVM cron job is started after DB connection (see connectDB block above)
 });
 
 
