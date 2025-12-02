@@ -118,6 +118,7 @@ export function calculateHourlyRate(monthlySalary, workSchedule) {
 /**
  * Calculate Planned Value (PV) for a specific date
  * PV represents the budgeted cost of work scheduled to be completed by a given date
+ * OPTIMIZED: Uses cached snapshots for historical dates to avoid recalculation
  * @param {Object} project - Project document
  * @param {Date} date - Target date
  * @param {Date} [startDate] - Optional start date for time range filtering (only include tasks that start >= startDate)
@@ -125,6 +126,28 @@ export function calculateHourlyRate(monthlySalary, workSchedule) {
  */
 export async function calculatePV(project, date, startDate = null) {
   try {
+    // OPTIMIZATION: Check snapshots first for historical dates (date < today)
+    const today = normalizeDate(new Date());
+    const targetDate = normalizeDate(date);
+    
+    // Only use snapshots for historical dates (not today or future)
+    if (targetDate.getTime() < today.getTime() && project.evmSnapshots && project.evmSnapshots.length > 0) {
+      // Find snapshot for this exact date
+      const snapshot = project.evmSnapshots.find(s => {
+        if (!s.date) return false;
+        const snapshotDate = normalizeDate(s.date);
+        return snapshotDate.getTime() === targetDate.getTime();
+      });
+      
+      if (snapshot && snapshot.plannedValue !== undefined && snapshot.plannedValue !== null) {
+        logger.debug(`[PV Cache Hit] Using snapshot for ${targetDate.toISOString()}: ${snapshot.plannedValue}`);
+        return snapshot.plannedValue;
+      }
+    }
+    
+    // If no snapshot found or date is today/future, calculate normally
+    logger.debug(`[PV Cache Miss] Calculating PV for ${targetDate.toISOString()}`);
+    
     const projectId = project._id || project.id;
     const tasks = await Task.find({ projectId })
       .populate('assignees', 'monthlySalary')
@@ -235,6 +258,7 @@ export async function calculatePV(project, date, startDate = null) {
 /**
  * Calculate Earned Value (EV) for a specific date
  * EV represents the budgeted cost of work actually completed by a given date
+ * OPTIMIZED: Uses cached snapshots for historical dates to avoid recalculation
  * @param {Object} project - Project document
  * @param {Date} date - Target date
  * @param {Date} [startDate] - Optional start date for time range filtering (only include tasks completed >= startDate)
@@ -242,6 +266,28 @@ export async function calculatePV(project, date, startDate = null) {
  */
 export async function calculateEV(project, date, startDate = null) {
   try {
+    // OPTIMIZATION: Check snapshots first for historical dates (date < today)
+    const today = normalizeDate(new Date());
+    const targetDate = normalizeDate(date);
+    
+    // Only use snapshots for historical dates (not today or future)
+    if (targetDate.getTime() < today.getTime() && project.evmSnapshots && project.evmSnapshots.length > 0) {
+      // Find snapshot for this exact date
+      const snapshot = project.evmSnapshots.find(s => {
+        if (!s.date) return false;
+        const snapshotDate = normalizeDate(s.date);
+        return snapshotDate.getTime() === targetDate.getTime();
+      });
+      
+      if (snapshot && snapshot.earnedValue !== undefined && snapshot.earnedValue !== null) {
+        logger.debug(`[EV Cache Hit] Using snapshot for ${targetDate.toISOString()}: ${snapshot.earnedValue}`);
+        return snapshot.earnedValue;
+      }
+    }
+    
+    // If no snapshot found or date is today/future, calculate normally
+    logger.debug(`[EV Cache Miss] Calculating EV for ${targetDate.toISOString()}`);
+    
     const projectId = project._id || project.id;
     
     // Use end of day to include all tasks completed during the target date
@@ -325,22 +371,49 @@ export async function calculateAC(project, date, startDate = null) {
     // If startDate is provided, normalize it for comparison
     const periodStartDate = startDate ? normalizeDate(startDate) : null;
 
-    // Get cumulative AC from snapshots up to this date (inclusive)
-    // Use normalized snapshot dates for comparison, but compare with end of target day
-    if (project.evmSnapshots && project.evmSnapshots.length > 0) {
+    // OPTIMIZATION: Check snapshots first for historical dates (date < today)
+    const today = normalizeDate(new Date());
+    const normalizedTargetDate = normalizeDate(date);
+    
+    // Only use snapshots for historical dates (not today or future)
+    if (normalizedTargetDate.getTime() < today.getTime() && project.evmSnapshots && project.evmSnapshots.length > 0) {
+      // First, try to find exact snapshot for this date
+      const exactSnapshot = project.evmSnapshots.find(s => {
+        if (!s.date) return false;
+        const snapshotDate = normalizeDate(s.date);
+        return snapshotDate.getTime() === normalizedTargetDate.getTime();
+      });
+      
+      if (exactSnapshot && exactSnapshot.actualCost !== undefined && exactSnapshot.actualCost !== null) {
+        logger.debug(`[AC Cache Hit] Using exact snapshot for ${normalizedTargetDate.toISOString()}: ${exactSnapshot.actualCost}`);
+        
+        // If periodStartDate is provided, we need to calculate the difference
+        if (periodStartDate) {
+          const periodStart = normalizeDate(periodStartDate);
+          // Find snapshot at period start (or closest before)
+          const periodStartSnapshot = project.evmSnapshots
+            .filter(s => {
+              if (!s.date) return false;
+              const snapshotDate = normalizeDate(s.date);
+              return snapshotDate.getTime() <= periodStart.getTime();
+            })
+            .sort((a, b) => normalizeDate(b.date).getTime() - normalizeDate(a.date).getTime())[0];
+          
+          if (periodStartSnapshot && periodStartSnapshot.actualCost !== undefined) {
+            // Return difference between target date AC and period start AC
+            return Math.max(0, exactSnapshot.actualCost - periodStartSnapshot.actualCost);
+          }
+        }
+        
+        return exactSnapshot.actualCost || 0;
+      }
+      
+      // If no exact snapshot, find latest snapshot before or on target date
       const snapshotsUpToDate = project.evmSnapshots.filter(
         snapshot => {
           try {
-            // Normalize snapshot date to start of day, then compare with end of target day
             const snapshotDate = normalizeDate(snapshot.date);
-            const isWithinRange = snapshotDate.getTime() <= targetDate.getTime();
-            
-            // If periodStartDate is provided, only include snapshots on or after the period start
-            if (periodStartDate && isWithinRange) {
-              return snapshotDate.getTime() >= periodStartDate.getTime();
-            }
-            
-            return isWithinRange;
+            return snapshotDate.getTime() <= normalizedTargetDate.getTime();
           } catch (error) {
             logger.warn(`Error normalizing snapshot date: ${error.message}`);
             return false;
@@ -351,12 +424,30 @@ export async function calculateAC(project, date, startDate = null) {
       if (snapshotsUpToDate.length > 0) {
         // Get the latest snapshot before or on the target date
         const latestSnapshot = snapshotsUpToDate[snapshotsUpToDate.length - 1];
-        // If periodStartDate is provided, we need to calculate the difference
-        // For now, return the snapshot value (this assumes snapshots are cumulative)
-        // TODO: If snapshots are not cumulative, we'd need to sum snapshots in the range
+        logger.debug(`[AC Cache Hit] Using latest snapshot for ${normalizedTargetDate.toISOString()}: ${latestSnapshot.actualCost}`);
+        
+        // If periodStartDate is provided, calculate the difference
+        if (periodStartDate) {
+          const periodStart = normalizeDate(periodStartDate);
+          const periodStartSnapshot = project.evmSnapshots
+            .filter(s => {
+              if (!s.date) return false;
+              const snapshotDate = normalizeDate(s.date);
+              return snapshotDate.getTime() <= periodStart.getTime();
+            })
+            .sort((a, b) => normalizeDate(b.date).getTime() - normalizeDate(a.date).getTime())[0];
+          
+          if (periodStartSnapshot && periodStartSnapshot.actualCost !== undefined) {
+            return Math.max(0, latestSnapshot.actualCost - periodStartSnapshot.actualCost);
+          }
+        }
+        
         return latestSnapshot.actualCost || 0;
       }
     }
+    
+    // If no snapshot found or date is today/future, calculate normally
+    logger.debug(`[AC Cache Miss] Calculating AC for ${normalizedTargetDate.toISOString()}`);
 
     // If no snapshots, calculate from project start date or period start date
     // Normalize dates to prevent timezone/off-by-one-day errors

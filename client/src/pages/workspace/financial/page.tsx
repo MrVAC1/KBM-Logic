@@ -29,32 +29,72 @@ export default function FinancialDashboardPage() {
   const [showInvestorReport, setShowInvestorReport] = useState(false)
   const [stats, setStats] = useState<any>(null)
   const [loading, setLoading] = useState(false)
+  const [chartLoading, setChartLoading] = useState(false)
   const [transactionRefreshTrigger, setTransactionRefreshTrigger] = useState(0)
 
-  // Fetch stats from API
-  const fetchStats = async () => {
+  // Fetch summary stats (fast load for metric cards)
+  const fetchSummaryStats = async () => {
     if (!projectId) return
 
     setLoading(true)
     try {
-      const response = await financialsAPI.getStats(projectId)
+      const response = await financialsAPI.getSummaryStats(projectId)
       const data = response.data?.data || response.data
-      setStats(data)
+      setStats((prev: any) => ({
+        ...prev,
+        ...data,
+      }))
     } catch (error: any) {
-      console.error('Failed to fetch stats:', error)
-      toast.error('Could not load financial data. Please try again.')
+      console.error('Failed to fetch summary stats:', error)
+      toast.error('Could not load financial metrics. Please try again.')
     } finally {
       setLoading(false)
     }
   }
 
+  // Fetch chart data (delayed load for S-Curve)
+  const fetchChartData = async () => {
+    if (!projectId) return
+
+    setChartLoading(true)
+    try {
+      const response = await financialsAPI.getChartData(projectId)
+      const data = response.data?.data || response.data
+      setStats((prev: any) => ({
+        ...prev,
+        evmDataPoints: data.evmDataPoints || [],
+        plannedValueCurve: data.plannedValueCurve || [],
+      }))
+    } catch (error: any) {
+      console.error('Failed to fetch chart data:', error)
+      toast.error('Could not load chart data. Please try again.')
+    } finally {
+      setChartLoading(false)
+    }
+  }
+
+  // Fetch both summary and chart data
+  const fetchStats = async () => {
+    if (!projectId) return
+
+    // Load summary first (fast)
+    await fetchSummaryStats()
+    
+    // Then load chart data (can be slower)
+    await fetchChartData()
+  }
+
   useEffect(() => {
-    fetchStats()
+    if (projectId) {
+      fetchStats()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId])
 
   // Callback to refresh data after transaction creation
   const handleTransactionCreated = () => {
-    fetchStats()
+    fetchSummaryStats()
+    fetchChartData()
     // Trigger transaction log refresh
     setTransactionRefreshTrigger(prev => prev + 1)
   }
@@ -265,7 +305,14 @@ export default function FinancialDashboardPage() {
               </CardHeader>
               <CardContent>
                 <div className="h-[400px] bg-slate-950 rounded-lg p-4">
-                  {evmData.length === 0 ? (
+                  {chartLoading ? (
+                    <div className="flex items-center justify-center h-full">
+                      <div className="text-center space-y-2">
+                        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent mx-auto" />
+                        <p className="text-sm text-muted-foreground">Loading chart data...</p>
+                      </div>
+                    </div>
+                  ) : evmData.length === 0 ? (
                     <div className="flex items-center justify-center h-full">
                       <p className="text-sm text-muted-foreground">No EVM data available</p>
                     </div>

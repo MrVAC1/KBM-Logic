@@ -128,6 +128,8 @@ export const tasks = {
 
 export const financials = {
   getStats: (projectId) => apiClient.get(`/projects/${projectId}/stats`),
+  getSummaryStats: (projectId) => apiClient.get(`/projects/${projectId}/stats?summary=true`),
+  getChartData: (projectId) => apiClient.get(`/projects/${projectId}/stats?chart=true`),
   createTransaction: (projectId, data) => apiClient.post(`/projects/${projectId}/transactions`, data),
   getTransactions: (projectId) => apiClient.get(`/projects/${projectId}/transactions`),
 };

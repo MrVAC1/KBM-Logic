@@ -35,8 +35,9 @@ const expenseSchema = new mongoose.Schema({
   timestamps: true,
 });
 
-// Indexes
-expenseSchema.index({ projectId: 1, createdAt: -1 });
+// Indexes for MongoDB Atlas optimization
+expenseSchema.index({ projectId: 1, createdAt: 1, frequency: 1 }); // Optimized for AC calculation (costs by date and frequency)
+expenseSchema.index({ projectId: 1, createdAt: -1 }); // General expenses lookup
 
 export default mongoose.model('Expense', expenseSchema);
 

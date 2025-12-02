@@ -110,8 +110,9 @@ const taskSchema = new mongoose.Schema({
   timestamps: true,
 });
 
-// Indexes
-taskSchema.index({ projectId: 1, status: 1 });
+// Indexes for MongoDB Atlas optimization
+taskSchema.index({ projectId: 1, status: 1, updatedAt: -1 }); // Optimized for EV calculation (completed tasks by date)
+taskSchema.index({ projectId: 1, status: 1 }); // General project tasks lookup
 taskSchema.index({ assignees: 1 });
 taskSchema.index({ deadline: 1 });
 

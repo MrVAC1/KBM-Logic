@@ -37,9 +37,10 @@ const transactionSchema = new mongoose.Schema({
   timestamps: true,
 });
 
-// Indexes
-transactionSchema.index({ projectId: 1, date: -1 });
-transactionSchema.index({ projectId: 1, type: 1 });
+// Indexes for MongoDB Atlas optimization
+transactionSchema.index({ projectId: 1, type: 1, date: -1 }); // Optimized for Remaining Budget calculation (Income/Expenses by date)
+transactionSchema.index({ projectId: 1, date: -1 }); // General transactions lookup
+transactionSchema.index({ projectId: 1, type: 1 }); // Transactions by type
 
 export default mongoose.model('Transaction', transactionSchema);
 
