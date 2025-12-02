@@ -11,11 +11,15 @@ import { FixedCostsModal } from "@/components/fixed-costs-modal"
 import { BudgetBreakdownModal } from "@/components/budget-breakdown-modal"
 import { TransactionLogDrawer } from "@/components/transaction-log-drawer"
 import { Tooltip as UITooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { VelocityCard } from "@/components/velocity-card"
+import { useParams } from "react-router-dom"
 
 export default function FinancialDashboardPage() {
+  const { projectId: urlProjectId } = useParams<{ projectId?: string }>()
   const [searchParams] = useSearchParams()
-  const { currentProject } = useProject()
-  const projectId = searchParams.get("project") || currentProject?.id || currentProject?._id
+  const { currentProject, hasPermission } = useProject()
+  const projectId = urlProjectId || searchParams.get("project") || currentProject?.id || currentProject?._id
+  const canViewFinancial = hasPermission('can_view_financial')
   const [showManageFunds, setShowManageFunds] = useState(false)
   const [showFixedCosts, setShowFixedCosts] = useState(false)
   const [showBudgetBreakdown, setShowBudgetBreakdown] = useState(false)
@@ -336,6 +340,13 @@ export default function FinancialDashboardPage() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Velocity Card - Only for managers */}
+            {canViewFinancial && projectId && (
+              <div className="mt-6">
+                <VelocityCard projectId={projectId} period="week" />
+              </div>
+            )}
           </>
         )}
       </div>

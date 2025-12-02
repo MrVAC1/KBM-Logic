@@ -145,6 +145,33 @@ export const expenses = {
   delete: (projectId, expenseId) => apiClient.delete(`/projects/${projectId}/expenses/${expenseId}`),
 };
 
+export const velocity = {
+  getProjectMembers: (projectId, period = 'week') => 
+    apiClient.get(`/projects/${projectId}/members/velocity`, { params: { period } }),
+  getMember: (projectId, userId, period = 'week') => 
+    apiClient.get(`/projects/${projectId}/members/${userId}/velocity`, { params: { period } }),
+};
+
+export const notifications = {
+  getAll: (params = {}) => 
+    apiClient.get('/notifications', { params }),
+  getByProject: (projectId, params = {}) => 
+    apiClient.get(`/projects/${projectId}/notifications`, { params }),
+  getUnreadCount: (projectId = null) => 
+    apiClient.get('/notifications/unread-count', { params: projectId ? { projectId } : {} }),
+  markAsRead: (notificationId) => 
+    apiClient.put(`/notifications/${notificationId}/read`),
+  markAllAsRead: (projectId = null) => 
+    apiClient.put('/notifications/read-all', projectId ? { projectId } : {}),
+};
+
+export const memberSettings = {
+  getNotificationSettings: (projectId) => 
+    apiClient.get(`/projects/${projectId}/members/me/notifications`),
+  updateNotificationSettings: (projectId, settings) => 
+    apiClient.put(`/projects/${projectId}/members/me/notifications`, { notificationSettings: settings }),
+};
+
 export default apiClient;
 
 

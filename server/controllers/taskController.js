@@ -4,6 +4,8 @@ import { recalculateRisk } from '../services/riskEngine.js';
 import { sendSuccess, sendError } from '../utils/response.js';
 import logger from '../utils/logger.js';
 import { logDataOperation, ensureTaskInMongo } from '../services/mongoSync.js';
+import { calculateTaskPlannedCost } from '../services/taskCostCalculator.js';
+import { createNotification } from '../services/notificationService.js';
 
 /**
  * Get project tasks
@@ -22,9 +24,13 @@ export const getProjectTasks = async (req, res) => {
       .lean()
       .sort({ createdAt: -1 });
 
+    // Check if user has financial view permission
+    const userPermissions = req.memberPermissions || [];
+    const canViewFinancial = userPermissions.includes('can_view_financial');
+
     // Format tasks and ensure assignees are properly structured
     const formattedTasks = tasks.map(task => {
-      return {
+      const taskObj = {
         ...task,
         assignees: (task.assignees || []).filter(Boolean).map(assignee => {
           // If assignee is null/undefined, skip it
@@ -43,6 +49,13 @@ export const getProjectTasks = async (req, res) => {
           };
         }).filter(Boolean) // Remove null entries
       };
+
+      // Hide plannedCost if user doesn't have financial view permission
+      if (!canViewFinancial) {
+        delete taskObj.plannedCost;
+      }
+
+      return taskObj;
     });
 
     sendSuccess(res, formattedTasks);
@@ -61,6 +74,16 @@ export const createTask = async (req, res) => {
     const { projectId } = req.params;
     const taskData = req.body;
 
+    // Validate estimateHours is provided and > 0
+    if (taskData.estimateHours === undefined || taskData.estimateHours === null) {
+      return sendError(res, 'estimateHours is required', 400);
+    }
+
+    const estimateHours = parseFloat(taskData.estimateHours);
+    if (isNaN(estimateHours) || estimateHours < 0) {
+      return sendError(res, 'estimateHours must be a valid non-negative number', 400);
+    }
+
     // Ensure status defaults to 'Todo' if not provided
     const status = taskData.status || 'Todo';
     
@@ -68,6 +91,15 @@ export const createTask = async (req, res) => {
     const assignees = Array.isArray(taskData.assignees) 
       ? taskData.assignees.filter(id => id) // Filter out null/undefined
       : [];
+
+    // Get project to calculate plannedCost
+    const project = await Project.findById(projectId);
+    if (!project) {
+      return sendError(res, 'Project not found', 404);
+    }
+
+    // Calculate plannedCost based on assignees' hourly rates
+    const plannedCost = await calculateTaskPlannedCost(project, estimateHours, assignees);
 
     const task = await Task.create({
       projectId,
@@ -78,7 +110,8 @@ export const createTask = async (req, res) => {
       assignees: assignees,
       startDate: taskData.startDate || undefined,
       deadline: taskData.deadline || undefined,
-      estimateHours: taskData.estimateHours !== undefined ? parseFloat(taskData.estimateHours) || 0 : 0,
+      estimateHours: estimateHours,
+      plannedCost: plannedCost,
       plannedValue: taskData.plannedValue || 0,
       risk: taskData.risk || {
         probability: 1,
@@ -89,6 +122,23 @@ export const createTask = async (req, res) => {
 
     // Recalculate risk
     await recalculateRisk(task._id, projectId);
+
+    // Create notifications for assigned users
+    if (assignees && assignees.length > 0) {
+      for (const assigneeId of assignees) {
+        try {
+          await createNotification(
+            assigneeId,
+            projectId,
+            'task_assigned',
+            `You have been assigned to task: ${taskData.title}`,
+            { taskId: task._id.toString(), taskTitle: taskData.title }
+          );
+        } catch (error) {
+          logger.warn(`Failed to create assignment notification for user ${assigneeId}: ${error.message}`);
+        }
+      }
+    }
 
     const populatedTask = await Task.findById(task._id)
       .populate({
@@ -123,8 +173,19 @@ export const createTask = async (req, res) => {
       status: task.status,
     });
 
+    // Check if user has financial view permission
+    const userPermissions = req.memberPermissions || [];
+    const canViewFinancial = userPermissions.includes('can_view_financial');
+
+    const responseTask = { ...formattedTask };
+    
+    // Hide plannedCost if user doesn't have financial view permission
+    if (!canViewFinancial && responseTask.plannedCost !== undefined) {
+      delete responseTask.plannedCost;
+    }
+
     sendSuccess(res, {
-      ...formattedTask,
+      ...responseTask,
       _persistedToMongo: true, // Flag indicating MongoDB persistence
     }, 201);
   } catch (error) {
@@ -147,11 +208,94 @@ export const updateTask = async (req, res) => {
       return sendError(res, 'Task not found', 404);
     }
 
+    // Store old values before update
+    const oldStatus = task.status;
+    const oldAssignees = [...(task.assignees || [])];
+
+    // Get project for calculating plannedCost
+    const project = await Project.findById(task.projectId);
+
+    // If estimateHours or assignees are being updated, recalculate plannedCost
+    if (updates.estimateHours !== undefined || updates.assignees !== undefined) {
+      const estimateHours = updates.estimateHours !== undefined 
+        ? parseFloat(updates.estimateHours) 
+        : task.estimateHours;
+      const assignees = updates.assignees !== undefined 
+        ? (Array.isArray(updates.assignees) ? updates.assignees.filter(id => id) : [])
+        : task.assignees;
+
+      if (project && estimateHours > 0 && assignees.length > 0) {
+        updates.plannedCost = await calculateTaskPlannedCost(project, estimateHours, assignees);
+      } else {
+        updates.plannedCost = 0;
+      }
+    }
+
     Object.assign(task, updates);
     await task.save();
 
     // Recalculate risk
     await recalculateRisk(task._id, task.projectId);
+
+    // Create notification if task is marked as Done
+    if (updates.status === 'Done' && oldStatus !== 'Done') {
+      try {
+        const assignees = task.assignees || [];
+        for (const assigneeId of assignees) {
+          await createNotification(
+            assigneeId,
+            task.projectId,
+            'task_completed',
+            `Task "${task.title}" has been marked as completed`,
+            { taskId: task._id.toString(), taskTitle: task.title }
+          );
+        }
+      } catch (error) {
+        logger.warn(`Failed to create completion notification: ${error.message}`);
+      }
+    }
+
+    // Create notification if task is overdue
+    if (task.deadline && new Date() > new Date(task.deadline) && task.status !== 'Done') {
+      try {
+        const assignees = task.assignees || [];
+        for (const assigneeId of assignees) {
+          await createNotification(
+            assigneeId,
+            task.projectId,
+            'task_overdue',
+            `Task "${task.title}" is overdue`,
+            { taskId: task._id.toString(), taskTitle: task.title, deadline: task.deadline }
+          );
+        }
+      } catch (error) {
+        logger.warn(`Failed to create overdue notification: ${error.message}`);
+      }
+    }
+
+    // Notify new assignees if they were added
+    if (updates.assignees && Array.isArray(updates.assignees)) {
+      const newAssignees = updates.assignees.filter(id => 
+        !oldAssignees.map(a => a.toString()).includes(id.toString())
+      );
+      for (const assigneeId of newAssignees) {
+        try {
+          await createNotification(
+            assigneeId,
+            task.projectId,
+            'task_assigned',
+            `You have been assigned to task: ${task.title}`,
+            { taskId: task._id.toString(), taskTitle: task.title }
+          );
+        } catch (error) {
+          logger.warn(`Failed to create assignment notification: ${error.message}`);
+        }
+      }
+    }
+
+    // Check if user has financial view permission
+    const userPermissions = req.memberPermissions || [];
+    const canViewFinancial = userPermissions.includes('can_view_financial');
 
     const populatedTask = await Task.findById(task._id)
       .populate({
@@ -178,6 +322,11 @@ export const updateTask = async (req, res) => {
         };
       }).filter(Boolean)
     };
+
+    // Hide plannedCost if user doesn't have financial view permission
+    if (!canViewFinancial && formattedTask.plannedCost !== undefined) {
+      delete formattedTask.plannedCost;
+    }
 
     // Log MongoDB persistence
     await logDataOperation('update', 'tasks', task._id.toString(), req.dbUser._id, {

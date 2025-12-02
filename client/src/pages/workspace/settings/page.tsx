@@ -2,16 +2,29 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { TeamsTab } from "@/components/settings/teams-tab"
 import { RolesTab } from "@/components/settings/roles-tab"
 import { DangerZoneTab } from "@/components/settings/danger-zone-tab"
+import { NotificationsTab } from "@/components/settings/notifications-tab"
 import { useProject } from "@/contexts/ProjectContext"
 import { useNavigate } from "react-router-dom"
 
 export default function SettingsPage() {
-  const { hasPermission, isOwner } = useProject()
+  const { hasPermission, isOwner, currentProject } = useProject()
   const navigate = useNavigate()
   
-  // Hide Settings page if user doesn't have can_manage_settings permission
-  if (!hasPermission('can_manage_settings')) {
-    // Redirect to projects or show access denied
+  // Allow access if user is a member of the project (for preferences)
+  // or has can_manage_settings (for admin tabs)
+  const canManageSettings = hasPermission('can_manage_settings')
+  
+  // If no project or user is not a member and can't manage settings, redirect
+  if (!currentProject) {
+    navigate('/projects')
+    return null
+  }
+  
+  // If user can manage settings, they have access
+  // Otherwise, check if they're a member (they can at least view preferences)
+  const hasAccess = canManageSettings || currentProject?.members?.length > 0
+  
+  if (!hasAccess) {
     navigate('/projects')
     return null
   }
@@ -28,25 +41,38 @@ export default function SettingsPage() {
       </div>
 
       <div className="mx-auto max-w-5xl px-6 py-8">
-        <Tabs defaultValue="teams" className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="teams">Teams</TabsTrigger>
-            <TabsTrigger value="roles">Roles</TabsTrigger>
-            <TabsTrigger value="danger">Danger Zone</TabsTrigger>
+        <Tabs defaultValue="preferences" className="w-full">
+          <TabsList className={`grid w-full ${canManageSettings ? 'grid-cols-4' : 'grid-cols-1'}`}>
+            <TabsTrigger value="preferences">My Preferences</TabsTrigger>
+            {canManageSettings && (
+              <>
+                <TabsTrigger value="teams">Teams</TabsTrigger>
+                <TabsTrigger value="roles">Roles</TabsTrigger>
+                <TabsTrigger value="danger">Danger Zone</TabsTrigger>
+              </>
+            )}
           </TabsList>
 
           <div className="mt-6">
-            <TabsContent value="teams">
-              <TeamsTab />
+            <TabsContent value="preferences">
+              <NotificationsTab />
             </TabsContent>
 
-            <TabsContent value="roles">
-              <RolesTab />
-            </TabsContent>
+            {canManageSettings && (
+              <>
+                <TabsContent value="teams">
+                  <TeamsTab />
+                </TabsContent>
 
-            <TabsContent value="danger">
-              <DangerZoneTab isOwner={isOwner()} />
-            </TabsContent>
+                <TabsContent value="roles">
+                  <RolesTab />
+                </TabsContent>
+
+                <TabsContent value="danger">
+                  <DangerZoneTab isOwner={isOwner()} />
+                </TabsContent>
+              </>
+            )}
           </div>
         </Tabs>
       </div>

@@ -5,6 +5,7 @@ import bcrypt from 'bcryptjs';
 import { sendSuccess, sendError } from '../utils/response.js';
 import logger from '../utils/logger.js';
 import { logDataOperation, ensureProjectInMongo } from '../services/mongoSync.js';
+import { createNotification } from '../services/notificationService.js';
 
 /**
  * Extract unique role definitions from members array
@@ -255,6 +256,13 @@ export const createProject = async (req, res) => {
         userId: ownerId,
         roleName: 'Owner',
         permissions: ALL_PERMISSIONS, // Owner has all permissions
+        notificationSettings: {
+          notifyOnTaskAssignment: true,
+          notifyOnBudgetRisk: true,
+          notifyOnRoleChange: true,
+          notifyOnTaskOverdue: true,
+          notifyOnTaskCompleted: true,
+        },
       }],
     });
 
@@ -566,6 +574,11 @@ export const updateMemberRole = async (req, res) => {
       return sendError(res, `Invalid permissions: ${invalidPermissions.join(', ')}`, 400);
     }
 
+    // Store old roles for comparison
+    const oldRoles = Array.isArray(targetMember.roles) && targetMember.roles.length > 0
+      ? targetMember.roles
+      : (targetMember.roleName ? [targetMember.roleName] : []);
+
     // Update member's roles and permissions
     project.members[memberIndex].roles = rolesArray;
     project.members[memberIndex].roleName = rolesArray[0]; // Keep for backward compatibility
@@ -573,6 +586,22 @@ export const updateMemberRole = async (req, res) => {
     await project.save();
 
     logger.info(`Member roles updated: User ${userId} updated member ${targetMemberUserId} to roles [${rolesArray.join(', ')}] in project ${project._id}`);
+
+    // Create notification if roles changed
+    const rolesChanged = JSON.stringify(oldRoles.sort()) !== JSON.stringify(rolesArray.sort());
+    if (rolesChanged) {
+      try {
+        await createNotification(
+          targetMemberUserId,
+          project._id,
+          'role_changed',
+          `Your role in project "${project.name}" has been updated to: ${rolesArray.join(', ')}`,
+          { oldRoles, newRoles: rolesArray }
+        );
+      } catch (error) {
+        logger.warn(`Failed to create role change notification: ${error.message}`);
+      }
+    }
 
     sendSuccess(res, {
       message: 'Member roles updated successfully',
@@ -629,6 +658,13 @@ export const joinProject = async (req, res) => {
       roleName: 'Guest', // Backward compatibility
       permissions: [], // Zero permissions for new members
       joinedAt: new Date(),
+      notificationSettings: {
+        notifyOnTaskAssignment: true,
+        notifyOnBudgetRisk: true,
+        notifyOnRoleChange: true,
+        notifyOnTaskOverdue: true,
+        notifyOnTaskCompleted: true,
+      },
     });
     await project.save();
 

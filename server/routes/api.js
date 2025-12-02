@@ -125,6 +125,24 @@ router.post('/projects/:projectId/expenses', verifyToken, checkDatabaseConnectio
 router.put('/projects/:projectId/expenses/:expenseId', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_edit_budget'), updateExpense);
 router.delete('/projects/:projectId/expenses/:expenseId', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_edit_budget'), deleteExpense);
 
+// Velocity routes
+import { getMemberVelocityData, getProjectMembersVelocityData } from '../controllers/velocityController.js';
+router.get('/projects/:projectId/members/velocity', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_view_financial'), getProjectMembersVelocityData);
+router.get('/projects/:projectId/members/:userId/velocity', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_view_financial'), getMemberVelocityData);
+
+// Notification routes
+import { getNotifications, getAllNotifications, markNotificationAsRead, markAllAsRead, getUnreadCount } from '../controllers/notificationController.js';
+router.get('/notifications', verifyToken, checkDatabaseConnection, getAllNotifications);
+router.get('/projects/:projectId/notifications', verifyToken, checkDatabaseConnection, checkProjectMember, getNotifications);
+router.get('/notifications/unread-count', verifyToken, checkDatabaseConnection, getUnreadCount);
+router.put('/notifications/:notificationId/read', verifyToken, checkDatabaseConnection, markNotificationAsRead);
+router.put('/notifications/read-all', verifyToken, checkDatabaseConnection, markAllAsRead);
+
+// Member notification settings routes
+import { updateMyNotificationSettings, getMyNotificationSettings } from '../controllers/memberSettingsController.js';
+router.get('/projects/:projectId/members/me/notifications', verifyToken, checkDatabaseConnection, checkProjectMember, getMyNotificationSettings);
+router.put('/projects/:projectId/members/me/notifications', verifyToken, checkDatabaseConnection, checkProjectMember, updateMyNotificationSettings);
+
 export default router;
 
 

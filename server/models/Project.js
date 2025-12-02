@@ -40,6 +40,10 @@ const ALL_PERMISSIONS = [
   'can_manage_salaries',
   'can_manage_work_schedule',
   'can_delete_project',
+  // Notification permissions
+  'notify_on_financial_risk',
+  'notify_on_task_assignment',
+  'notify_on_role_change',
 ];
 
 // Role schema removed - role data is now inline in members
@@ -72,6 +76,29 @@ const memberSchema = new mongoose.Schema({
   joinedAt: {
     type: Date,
     default: Date.now,
+  },
+  // Notification preferences for this member
+  notificationSettings: {
+    notifyOnTaskAssignment: {
+      type: Boolean,
+      default: true,
+    },
+    notifyOnBudgetRisk: {
+      type: Boolean,
+      default: true,
+    },
+    notifyOnRoleChange: {
+      type: Boolean,
+      default: true,
+    },
+    notifyOnTaskOverdue: {
+      type: Boolean,
+      default: true,
+    },
+    notifyOnTaskCompleted: {
+      type: Boolean,
+      default: true,
+    },
   },
 }, { _id: true });
 

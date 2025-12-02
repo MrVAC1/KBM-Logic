@@ -13,6 +13,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useAuth } from "@/contexts/AuthContext"
 import { OnboardingModal } from "@/components/onboarding-modal"
+import { NotificationBell } from "@/components/notification-bell"
 
 export function UserNav() {
   const { user, logout } = useAuth()
@@ -32,7 +33,9 @@ export function UserNav() {
 
   return (
     <>
-      <DropdownMenu>
+      <div className="flex items-center gap-2">
+        <NotificationBell />
+        <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button className="relative flex items-center justify-center rounded-full md:gap-2 md:border md:border-cyan-500/30 md:px-3 md:py-1 transition-all duration-200 md:hover:bg-cyan-500/10 md:hover:border-cyan-500/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
             <span className="hidden md:block text-sm font-medium text-foreground">
@@ -77,6 +80,7 @@ export function UserNav() {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+      </div>
       <OnboardingModal open={showOnboardingModal} onOpenChange={setShowOnboardingModal} />
     </>
   )

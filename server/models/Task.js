@@ -98,6 +98,12 @@ const taskSchema = new mongoose.Schema({
     default: 0,
     min: 0,
   },
+  // Planned Cost - calculated as estimateHours * hourlyRate (from project member)
+  plannedCost: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
   timeLogs: [timeLogSchema],
   risk: riskSchema,
 }, {

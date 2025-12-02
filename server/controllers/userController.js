@@ -1,6 +1,7 @@
 import User from '../models/User.js';
 import { sendSuccess, sendError } from '../utils/response.js';
 import logger from '../utils/logger.js';
+import { createNotification } from '../services/notificationService.js';
 
 /**
  * Update user salary
@@ -37,11 +38,30 @@ export const updateUserSalary = async (req, res) => {
       return sendError(res, 'User not found', 404);
     }
 
+    // Get old salary for comparison
+    const oldSalary = user.monthlySalary || 0;
+    
     // Update salary
     user.monthlySalary = salaryValue;
     await user.save();
 
     logger.info(`User salary updated: ${userId} -> ${salaryValue}`);
+
+    // Create notification if salary changed (get projectId from req.params)
+    const { projectId } = req.params;
+    if (projectId && salaryValue !== oldSalary) {
+      try {
+        await createNotification(
+          userId,
+          projectId,
+          'salary_changed',
+          `Your monthly salary has been updated to $${salaryValue.toLocaleString()}`,
+          { oldSalary, newSalary: salaryValue }
+        );
+      } catch (error) {
+        logger.warn(`Failed to create salary change notification: ${error.message}`);
+      }
+    }
 
     return sendSuccess(res, {
       id: user._id,

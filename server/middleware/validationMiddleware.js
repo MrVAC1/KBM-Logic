@@ -44,6 +44,7 @@ const schemas = {
     startDate: Joi.date().allow(null),
     deadline: Joi.date().allow(null),
     estimateHours: Joi.number().min(0).required(),
+    plannedCost: Joi.number().min(0),
     plannedValue: Joi.number().min(0).default(0),
     risk: Joi.object({
       probability: Joi.number().min(1).max(5).default(1),

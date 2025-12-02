@@ -97,6 +97,19 @@ const permissionLabels: Record<string, { label: string; description: string }> =
     label: 'Delete Project',
     description: 'Permanently delete the project'
   },
+  // Notification permissions
+  'notify_on_financial_risk': {
+    label: 'Financial Risk Notifications',
+    description: 'Receive notifications about budget overruns and financial risks'
+  },
+  'notify_on_task_assignment': {
+    label: 'Task Assignment Notifications',
+    description: 'Receive notifications when assigned to tasks'
+  },
+  'notify_on_role_change': {
+    label: 'Role Change Notifications',
+    description: 'Receive notifications when role or permissions are updated'
+  },
 }
 
 // Critical permissions that cannot be disabled for Owner role
@@ -180,6 +193,13 @@ function RoleCard({ role, allPermissions, permissionLabels, updatingPermissions,
     'can_view_dashboard',
     'can_view_tasks',
   ]
+  
+  // Notification permissions
+  const notificationPermissions = [
+    'notify_on_financial_risk',
+    'notify_on_task_assignment',
+    'notify_on_role_change',
+  ]
 
   return (
     <div
@@ -247,6 +267,7 @@ function RoleCard({ role, allPermissions, permissionLabels, updatingPermissions,
                 { title: 'Management', permissions: managementPermissions },
                 { title: 'Operations', permissions: operationalPermissions },
                 { title: 'Access', permissions: viewPermissions },
+                { title: 'Notifications', permissions: notificationPermissions },
               ].map((group) => (
                 <div key={group.title} className="space-y-2">
                   <h5 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{group.title}</h5>
@@ -677,12 +698,20 @@ export function RolesTab() {
     'can_view_tasks',
   ]
   
+  // Notification permissions
+  const notificationPermissions = [
+    'notify_on_financial_risk',
+    'notify_on_task_assignment',
+    'notify_on_role_change',
+  ]
+  
   // Combine all permissions in order
   const allPermissions = [
     ...criticalPermissions,
     ...managementPermissions,
     ...operationalPermissions,
     ...viewPermissions,
+    ...notificationPermissions,
   ]
 
   // Separate roles: Owner (pinned top), Custom roles (sortable), Guest (pinned bottom)
