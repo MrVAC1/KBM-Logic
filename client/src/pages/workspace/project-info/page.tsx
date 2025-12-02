@@ -33,6 +33,7 @@ export default function ProjectInfoPage() {
   
   const canManageWorkSchedule = hasPermission('can_manage_work_schedule')
   const canManageSettings = hasPermission('can_manage_settings') || hasPermission('can_edit_budget')
+  const canManageDeadline = hasPermission('can_manage_deadline')
 
   // Get member count (includes owner if owner is in members array)
   const memberCount = currentProject?.members?.length || 0
@@ -141,7 +142,7 @@ export default function ProjectInfoPage() {
   }
 
   const handleSaveDeadline = async () => {
-    if (!projectId || !canManageSettings) return
+    if (!projectId || !canManageDeadline) return
 
     // Validate deadline cannot be earlier than createdAt
     if (deadline) {
@@ -297,7 +298,7 @@ export default function ProjectInfoPage() {
                         : "Not set"
                       }
                     </span>
-                    {canManageSettings && (
+                    {canManageDeadline && (
                       <Button
                         variant="ghost"
                         size="sm"

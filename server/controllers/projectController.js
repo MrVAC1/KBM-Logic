@@ -720,10 +720,11 @@ export const updateProject = async (req, res) => {
 
     // Validate deadline if provided
     if (updates.deadline !== undefined) {
-      // Check permission for project settings updates
+      // Check permission for deadline management
       const userPermissions = getUserPermissions(project, userId);
-      if (!userPermissions.includes('can_manage_settings') && !userPermissions.includes('can_edit_budget')) {
-        return sendError(res, 'Permission denied: You do not have permission to update project deadline', 403);
+      // Owner always has all permissions (including can_manage_deadline via ALL_PERMISSIONS)
+      if (!userPermissions.includes('can_manage_deadline')) {
+        return sendError(res, 'Permission denied: You do not have permission to manage project deadline', 403);
       }
 
       // Validate deadline cannot be earlier than createdAt

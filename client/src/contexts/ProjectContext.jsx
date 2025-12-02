@@ -9,7 +9,6 @@ export const ALL_PERMISSIONS = [
   'can_view_risks',
   'can_view_financial',
   // Action permissions  
-  'can_track_time',
   'can_create_tasks',
   'can_edit_tasks',
   'can_delete_tasks',
@@ -17,6 +16,7 @@ export const ALL_PERMISSIONS = [
   'can_manage_roles',
   'can_invite_users',
   'can_manage_settings',
+  'can_manage_deadline', // Manage Project Deadline (Change target completion date)
   'can_delete_project',
 ];
 

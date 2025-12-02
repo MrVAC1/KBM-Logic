@@ -37,44 +37,41 @@ const getCustomRolePermissions = (roleName) => {
       'can_view_dashboard',
       'can_view_tasks',
       'can_view_financial',
-      'can_track_time',
       'can_create_tasks',
       'can_edit_tasks',
     ];
   }
-  // QA role - can view tasks, track time, view financial
+  // QA role - can view tasks, view financial
   if (roleName === 'QA') {
     return [
       'can_view_dashboard',
       'can_view_tasks',
       'can_view_financial',
-      'can_track_time',
       'can_edit_tasks',
     ];
   }
-  // Designer role - can view tasks, track time, view financial
+  // Designer role - can view tasks, view financial
   if (roleName === 'Designer') {
     return [
       'can_view_dashboard',
       'can_view_tasks',
       'can_view_financial',
-      'can_track_time',
       'can_create_tasks',
       'can_edit_tasks',
     ];
   }
-  // Manager role - can manage tasks, view financial, but not manage roles
+  // Manager role - can manage tasks, view financial, manage deadline, but not manage roles
   if (roleName === 'Manager') {
     return [
       'can_view_dashboard',
       'can_view_tasks',
       'can_view_risks',
       'can_view_financial',
-      'can_track_time',
       'can_create_tasks',
       'can_edit_tasks',
       'can_delete_tasks',
       'can_edit_budget',
+      'can_manage_deadline', // Manager can manage project deadline
       'can_invite_users',
     ];
   }

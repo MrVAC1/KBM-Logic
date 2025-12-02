@@ -97,7 +97,7 @@ export const mockCurrentUser: User = {
   location: "San Francisco, CA",
   bio: "Full-stack developer passionate about project management",
   role: "developer",
-  permissions: ["can_track_time", "edit_tasks"],
+  permissions: ["edit_tasks"],
   isOnboarded: true,
 }
 
@@ -114,7 +114,7 @@ export const mockUsers: User[] = [
     bio: "Project manager with 10 years experience",
     role: "manager",
     salary: 120000,
-    permissions: ["edit_budget", "manage_roles", "can_track_time", "edit_tasks"],
+    permissions: ["edit_budget", "manage_roles", "can_manage_deadline", "edit_tasks"],
     isOnboarded: true,
   },
   {
@@ -319,7 +319,7 @@ export const mockRoles: Role[] = [
     id: "role-2",
     projectId: "project-1",
     name: "Manager",
-    permissions: ["edit_budget", "manage_roles", "can_track_time", "edit_tasks"],
+    permissions: ["edit_budget", "manage_roles", "can_manage_deadline", "edit_tasks"],
     hierarchy: 2,
     color: "#3b82f6",
     isOwner: false,
@@ -328,7 +328,7 @@ export const mockRoles: Role[] = [
     id: "role-3",
     projectId: "project-1",
     name: "Developer",
-    permissions: ["can_track_time", "edit_tasks"],
+    permissions: ["edit_tasks"],
     hierarchy: 3,
     color: "#10b981",
     isOwner: false,

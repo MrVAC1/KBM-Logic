@@ -53,9 +53,9 @@ const permissionLabels: Record<string, { label: string; description: string }> =
     label: 'View Financial',
     description: 'View budget, transactions, and financial reports'
   },
-  'can_track_time': {
-    label: 'Track Time',
-    description: 'Log time on tasks and track work hours'
+  'can_manage_deadline': {
+    label: 'Manage Project Deadline',
+    description: 'Change target completion date for the project'
   },
   'can_create_tasks': {
     label: 'Create Tasks',
@@ -173,6 +173,7 @@ function RoleCard({ role, allPermissions, permissionLabels, updatingPermissions,
     'can_manage_roles',
     'can_manage_salaries',
     'can_manage_work_schedule',
+    'can_manage_deadline',
     'can_edit_budget',
   ]
   
@@ -184,7 +185,6 @@ function RoleCard({ role, allPermissions, permissionLabels, updatingPermissions,
   const operationalPermissions = [
     'can_create_tasks',
     'can_edit_tasks',
-    'can_track_time',
   ]
   
   const viewPermissions = [
@@ -674,6 +674,7 @@ export function RolesTab() {
     'can_manage_roles',
     'can_manage_salaries',
     'can_manage_work_schedule',
+    'can_manage_deadline',
     'can_edit_budget',
   ]
   
@@ -687,7 +688,6 @@ export function RolesTab() {
   const operationalPermissions = [
     'can_create_tasks',
     'can_edit_tasks',
-    'can_track_time',
   ]
   
   // View Level (Least Critical)
