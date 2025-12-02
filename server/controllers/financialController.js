@@ -128,6 +128,22 @@ export const getDashboardStats = async (req, res) => {
     const scheduleVariance = currentEV - currentPV; // SV = EV - PV
     const costVariance = currentEV - currentAC; // CV = EV - AC
 
+    // Calculate total additional funds from income transactions (type === '+')
+    // This represents funds added via "Manage Funds" that increase the available budget
+    const incomeTransactions = await Transaction.find({
+      projectId,
+      type: '+', // Income transactions
+    }).lean();
+    
+    const totalAdditionalFunds = incomeTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
+
+    // Calculate Remaining Budget
+    // Formula: Remaining = (PV + totalAdditionalFunds) - AC
+    // PV is the baseline budget (Planned Value)
+    // totalAdditionalFunds are income transactions that increase available funds
+    // AC is the actual cost spent
+    const remainingBudget = Math.max(0, (currentPV + totalAdditionalFunds) - currentAC);
+
     // Get transactions
     const transactions = await Transaction.find({ projectId })
       .populate('authorId', 'displayName')
@@ -154,11 +170,17 @@ export const getDashboardStats = async (req, res) => {
         scheduleVariance: Math.round(scheduleVariance * 100) / 100, // SV = EV - PV
         costVariance: Math.round(costVariance * 100) / 100, // CV = EV - AC
       },
+      budget: {
+        baseline: Math.round(currentPV * 100) / 100, // PV is the baseline budget
+        totalAdditionalFunds: Math.round(totalAdditionalFunds * 100) / 100, // Income from transactions
+        remaining: Math.round(remainingBudget * 100) / 100, // Remaining = (PV + totalAdditionalFunds) - AC
+      },
       transactions,
       tasksByStatus,
       totalTasks: allTasks.length,
       // Legacy fields for backward compatibility
       actualCost: currentAC,
+      remaining: Math.round(remainingBudget * 100) / 100, // For backward compatibility
       plannedValueCurve: evmDataPoints.map(d => ({
         date: d.date,
         plannedValue: d.PV,

@@ -1,6 +1,7 @@
 import Project from '../models/Project.js';
 import Task from '../models/Task.js';
 import User from '../models/User.js';
+import Transaction from '../models/Transaction.js';
 import { calculatePV, calculateAC, calculateHourlyRate, calculateDailyRate, getEffectiveDeadline } from '../services/evmEngine.js';
 import { sendSuccess, sendError } from '../utils/response.js';
 import logger from '../utils/logger.js';
@@ -144,8 +145,19 @@ export const getInvestorReport = async (req, res) => {
     // Calculate Burn Rate: Total Actual Spent / Project Duration in Months
     const burnRate = projectDurationMonths > 0 ? currentAC / projectDurationMonths : 0;
 
+    // Calculate total income from transactions (type === '+')
+    // Income transactions effectively increase the available budget pool
+    const incomeTransactions = await Transaction.find({
+      projectId,
+      type: '+', // Income
+      date: { $lte: today }, // Only transactions up to today
+    }).lean();
+    
+    const totalIncome = incomeTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
+
     // Calculate Remaining Budget
-    const remainingBudget = Math.max(0, currentPV - currentAC);
+    // Remaining Budget = PV (planned) + Income (from transactions) - AC (actual costs)
+    const remainingBudget = Math.max(0, currentPV + totalIncome - currentAC);
 
     // Calculate Runway: Remaining Budget / Burn Rate
     let runway = null;

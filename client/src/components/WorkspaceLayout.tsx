@@ -15,17 +15,23 @@ export default function WorkspaceLayout() {
     const projectIdFromUrl = searchParams.get('project')
     const activeProjectId = projectIdFromUrl || localStorage.getItem('activeProjectId')
     
-    if (activeProjectId && !currentProject && !loading) {
-      // Store in localStorage for persistence
-      if (!localStorage.getItem('activeProjectId')) {
-        localStorage.setItem('activeProjectId', activeProjectId)
+    // Prevent infinite loop: check if we already have the correct project loaded
+    const currentProjectId = currentProject?.id || currentProject?._id
+    
+    if (activeProjectId && !loading) {
+      // Only load if we don't have a project OR if the project ID doesn't match
+      if (!currentProject || currentProjectId !== activeProjectId) {
+        // Store in localStorage for persistence
+        if (!localStorage.getItem('activeProjectId')) {
+          localStorage.setItem('activeProjectId', activeProjectId)
+        }
+        loadProject(activeProjectId).catch((err) => {
+          console.error('Failed to load project:', err)
+          // Error handling is done in ProjectContext
+        })
       }
-      loadProject(activeProjectId).catch((err) => {
-        console.error('Failed to load project:', err)
-        // Error handling is done in ProjectContext
-      })
-    } else if (!activeProjectId && !loading) {
-      // No project selected, redirect to projects list
+    } else if (!activeProjectId && !loading && !currentProject) {
+      // No project selected and no project loaded, redirect to projects list
       navigate('/projects')
     }
   }, [loadProject, currentProject, loading, navigate, searchParams])

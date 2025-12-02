@@ -2,6 +2,7 @@ import Project from '../models/Project.js';
 import Task from '../models/Task.js';
 import User from '../models/User.js';
 import Expense from '../models/Expense.js';
+import Transaction from '../models/Transaction.js';
 import logger from '../utils/logger.js';
 import { normalizeDate, getEndOfDay } from '../utils/dateUtils.js';
 
@@ -468,6 +469,29 @@ export async function calculateAC(project, date, startDate = null) {
           }
           totalAC += fixedCostAmount;
         }
+      }
+    }
+
+    // Add manual transactions (from "Manage Funds")
+    // Only include expense transactions (type === '-') that occurred before or on target date
+    const transactions = await Transaction.find({
+      projectId,
+      type: '-', // Only expenses increase AC
+      date: { $lte: targetDate }, // Transaction date must be <= target date
+    }).lean();
+
+    // If periodStartDate is provided, only include transactions on or after the period start
+    if (periodStartDate) {
+      for (const transaction of transactions) {
+        const transactionDate = normalizeDate(transaction.date);
+        if (transactionDate.getTime() >= periodStartDate.getTime()) {
+          totalAC += transaction.amount || 0;
+        }
+      }
+    } else {
+      // Sum all expense transactions up to target date
+      for (const transaction of transactions) {
+        totalAC += transaction.amount || 0;
       }
     }
 

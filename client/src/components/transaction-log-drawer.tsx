@@ -1,17 +1,64 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
 import { ArrowUpCircle, ArrowDownCircle } from "lucide-react"
-import { mockTransactions } from "@/lib/mock-data"
+import { financials as transactionsAPI } from "@/services/api"
+import { toast } from "sonner"
 
 interface TransactionLogDrawerProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  projectId: string
 }
 
-export function TransactionLogDrawer({ open, onOpenChange }: TransactionLogDrawerProps) {
+interface Transaction {
+  _id: string
+  amount: number
+  type: '+' | '-'
+  source: string
+  date: string
+  description?: string
+  authorId?: {
+    _id: string
+    displayName?: string
+    email?: string
+  }
+}
+
+export function TransactionLogDrawer({ open, onOpenChange, projectId, refreshTrigger }: TransactionLogDrawerProps) {
+  const [transactions, setTransactions] = useState<Transaction[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const fetchTransactions = async () => {
+    if (!projectId) return
+    
+    setLoading(true)
+    setError(null)
+    
+    try {
+      const response = await transactionsAPI.getTransactions(projectId)
+      const data = response.data?.data || response.data || []
+      setTransactions(Array.isArray(data) ? data : [])
+    } catch (err) {
+      console.error('Failed to fetch transactions:', err)
+      setError('Failed to load transactions')
+      toast.error('Failed to load transactions')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (open && projectId) {
+      fetchTransactions()
+    }
+  }, [open, projectId, refreshTrigger])
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full sm:max-w-xl overflow-y-auto">
@@ -21,48 +68,76 @@ export function TransactionLogDrawer({ open, onOpenChange }: TransactionLogDrawe
         </SheetHeader>
 
         <div className="mt-6 space-y-3">
-          {mockTransactions.map((transaction) => (
-            <Card key={transaction.id}>
-              <CardContent className="py-4">
-                <div className="flex items-start gap-3">
-                  {transaction.type === "income" ? (
-                    <ArrowUpCircle className="h-5 w-5 text-success shrink-0 mt-0.5" />
-                  ) : (
-                    <ArrowDownCircle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1">
-                        <p className="font-medium">{transaction.source}</p>
-                        <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{transaction.reason}</p>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <p
-                          className={`text-lg font-bold ${
-                            transaction.type === "income" ? "text-success" : "text-destructive"
-                          }`}
-                        >
-                          {transaction.type === "income" ? "+" : "-"}${transaction.amount.toLocaleString()}
-                        </p>
+          {loading ? (
+            <>
+              {[1, 2, 3].map((i) => (
+                <Card key={i}>
+                  <CardContent className="py-4">
+                    <Skeleton className="h-20 w-full" />
+                  </CardContent>
+                </Card>
+              ))}
+            </>
+          ) : error ? (
+            <div className="text-center py-8 text-destructive">
+              <p>{error}</p>
+            </div>
+          ) : transactions.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <p>No transactions found</p>
+            </div>
+          ) : (
+            transactions.map((transaction) => {
+              const isIncome = transaction.type === '+'
+              const authorName = transaction.authorId?.displayName || transaction.authorId?.email?.split('@')[0] || 'Unknown'
+              
+              return (
+                <Card key={transaction._id}>
+                  <CardContent className="py-4">
+                    <div className="flex items-start gap-3">
+                      {isIncome ? (
+                        <ArrowUpCircle className="h-5 w-5 text-green-500 shrink-0 mt-0.5" />
+                      ) : (
+                        <ArrowDownCircle className="h-5 w-5 text-red-500 shrink-0 mt-0.5" />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1">
+                            <p className="font-medium">{transaction.source}</p>
+                            {transaction.description && (
+                              <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{transaction.description}</p>
+                            )}
+                            <p className="text-xs text-muted-foreground mt-1">By: {authorName}</p>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <p
+                              className={`text-lg font-bold ${
+                                isIncome ? "text-green-500" : "text-red-500"
+                              }`}
+                            >
+                              {isIncome ? "+" : "-"}${transaction.amount.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 mt-2">
+                          <Badge variant="outline" className="text-xs">
+                            {isIncome ? "Income" : "Expense"}
+                          </Badge>
+                          <span className="text-xs text-muted-foreground">
+                            {new Date(transaction.date).toLocaleDateString("en-US", {
+                              year: "numeric",
+                              month: "short",
+                              day: "numeric",
+                            })}
+                          </span>
+                        </div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 mt-2">
-                      <Badge variant="outline" className="text-xs">
-                        {transaction.type}
-                      </Badge>
-                      <span className="text-xs text-muted-foreground">
-                        {new Date(transaction.date).toLocaleDateString("en-US", {
-                          year: "numeric",
-                          month: "short",
-                          day: "numeric",
-                        })}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                  </CardContent>
+                </Card>
+              )
+            })
+          )}
         </div>
       </SheetContent>
     </Sheet>

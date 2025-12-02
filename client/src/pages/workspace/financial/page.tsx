@@ -29,27 +29,35 @@ export default function FinancialDashboardPage() {
   const [showInvestorReport, setShowInvestorReport] = useState(false)
   const [stats, setStats] = useState<any>(null)
   const [loading, setLoading] = useState(false)
+  const [transactionRefreshTrigger, setTransactionRefreshTrigger] = useState(0)
 
   // Fetch stats from API
-  useEffect(() => {
-    const fetchStats = async () => {
-      if (!projectId) return
+  const fetchStats = async () => {
+    if (!projectId) return
 
-      setLoading(true)
-      try {
-        const response = await financialsAPI.getStats(projectId)
-        const data = response.data?.data || response.data
-        setStats(data)
-      } catch (error: any) {
-        console.error('Failed to fetch stats:', error)
-        toast.error('Could not load financial data. Please try again.')
-      } finally {
-        setLoading(false)
-      }
+    setLoading(true)
+    try {
+      const response = await financialsAPI.getStats(projectId)
+      const data = response.data?.data || response.data
+      setStats(data)
+    } catch (error: any) {
+      console.error('Failed to fetch stats:', error)
+      toast.error('Could not load financial data. Please try again.')
+    } finally {
+      setLoading(false)
     }
+  }
 
+  useEffect(() => {
     fetchStats()
   }, [projectId])
+
+  // Callback to refresh data after transaction creation
+  const handleTransactionCreated = () => {
+    fetchStats()
+    // Trigger transaction log refresh
+    setTransactionRefreshTrigger(prev => prev + 1)
+  }
 
   // Format EVM data for chart
   const evmData = useMemo(() => {
@@ -74,11 +82,18 @@ export default function FinancialDashboardPage() {
   const scheduleVariance = stats?.variances?.scheduleVariance ?? (currentEV - currentPV)
   const costVariance = stats?.variances?.costVariance ?? (currentEV - currentAC)
 
-  // Budget health calculation (based on PV as total planned budget)
-  const totalBudget = currentPV || 0
+  // Budget calculation (includes income transactions)
+  // Use API values if available, otherwise calculate from current values
+  const totalAdditionalFunds = stats?.budget?.totalAdditionalFunds ?? 0
+  const totalBudget = stats?.budget?.baseline 
+    ? (stats.budget.baseline + totalAdditionalFunds)
+    : (currentPV + totalAdditionalFunds)
   const actualSpent = currentAC || 0
+  const remainingBudget = stats?.budget?.remaining ?? stats?.remaining ?? Math.max(0, totalBudget - actualSpent)
+  
+  // Budget health calculation (percentage of budget remaining)
   const budgetHealth = totalBudget > 0 
-    ? ((totalBudget - actualSpent) / totalBudget) * 100 
+    ? (remainingBudget / totalBudget) * 100 
     : 0
   const isOverBudget = budgetHealth < 10
 
@@ -235,7 +250,7 @@ export default function FinancialDashboardPage() {
                 </CardHeader>
                 <CardContent>
                   <div className={`text-2xl font-bold ${isOverBudget ? "text-warning" : "text-foreground"}`}>
-                    ${(totalBudget - actualSpent).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    ${remainingBudget.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">{budgetHealth.toFixed(1)}% remaining</p>
                 </CardContent>
@@ -360,10 +375,20 @@ export default function FinancialDashboardPage() {
         )}
       </div>
 
-      <ManageFundsModal open={showManageFunds} onOpenChange={setShowManageFunds} />
+      <ManageFundsModal 
+        open={showManageFunds} 
+        onOpenChange={setShowManageFunds}
+        onTransactionCreated={handleTransactionCreated}
+        projectId={projectId || undefined}
+      />
       <FixedCostsModal open={showFixedCosts} onOpenChange={setShowFixedCosts} />
       <BudgetBreakdownModal open={showBudgetBreakdown} onOpenChange={setShowBudgetBreakdown} />
-      <TransactionLogDrawer open={showTransactionLog} onOpenChange={setShowTransactionLog} />
+      <TransactionLogDrawer 
+        open={showTransactionLog} 
+        onOpenChange={setShowTransactionLog} 
+        projectId={projectId || ''}
+        refreshTrigger={transactionRefreshTrigger}
+      />
       {projectId && canViewFinancial && (
         <InvestorReportModal 
           open={showInvestorReport} 

@@ -6,34 +6,90 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Plus, Minus } from "lucide-react"
+import { Plus, Minus, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { financials as financialsAPI } from "@/services/api"
+import { toast } from "sonner"
+import { useParams } from "react-router-dom"
 
 interface ManageFundsModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  onTransactionCreated?: () => void
+  projectId?: string
 }
 
-export function ManageFundsModal({ open, onOpenChange }: ManageFundsModalProps) {
+export function ManageFundsModal({ open, onOpenChange, onTransactionCreated, projectId: propProjectId }: ManageFundsModalProps) {
+  const { projectId: urlProjectId } = useParams<{ projectId?: string }>()
+  const projectId = propProjectId || urlProjectId
+  
   const [type, setType] = useState<"income" | "expense">("income")
   const [amount, setAmount] = useState("")
   const [source, setSource] = useState("")
   const [reason, setReason] = useState("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const today = new Date().toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  })
+  const today = new Date()
 
-  const handleSubmit = () => {
-    // Process transaction
-    console.log({ type, amount, source, reason, date: today })
-    onOpenChange(false)
-    // Reset form
-    setAmount("")
-    setSource("")
-    setReason("")
+  const handleSubmit = async () => {
+    // Validation
+    const amountNum = parseFloat(amount)
+    if (!amount || isNaN(amountNum) || amountNum <= 0) {
+      toast.error("Please enter a valid amount greater than 0")
+      return
+    }
+
+    if (!source.trim()) {
+      toast.error("Please enter a source/category")
+      return
+    }
+
+    if (!reason.trim()) {
+      toast.error("Please enter a reason/description")
+      return
+    }
+
+    if (!projectId) {
+      toast.error("Project ID is missing")
+      return
+    }
+
+    setIsSubmitting(true)
+
+    try {
+      // Prepare payload
+      const payload = {
+        amount: amountNum,
+        type: type === "income" ? "+" : "-",
+        source: source.trim(),
+        date: today.toISOString(),
+        description: reason.trim(),
+      }
+
+      // Make API call
+      await financialsAPI.createTransaction(projectId, payload)
+
+      // Success feedback
+      toast.success(type === "income" ? "Funds added successfully" : "Expense logged successfully")
+
+      // Notify parent to refetch data
+      if (onTransactionCreated) {
+        onTransactionCreated()
+      }
+
+      // Close modal and reset form
+      onOpenChange(false)
+      setAmount("")
+      setSource("")
+      setReason("")
+      setType("income")
+    } catch (error: any) {
+      console.error("Failed to create transaction:", error)
+      const errorMessage = error?.response?.data?.message || error?.message || "Failed to create transaction"
+      toast.error(errorMessage)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -103,7 +159,16 @@ export function ManageFundsModal({ open, onOpenChange }: ManageFundsModalProps) 
           {/* Date field - READ ONLY */}
           <div className="space-y-2">
             <Label htmlFor="date">Date</Label>
-            <Input id="date" value={today} disabled className="bg-muted text-muted-foreground cursor-not-allowed" />
+            <Input 
+              id="date" 
+              value={today.toLocaleDateString("en-US", {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+              })} 
+              disabled 
+              className="bg-muted text-muted-foreground cursor-not-allowed" 
+            />
             <p className="text-xs text-muted-foreground">Date is automatically set to today</p>
           </div>
         </div>
@@ -114,10 +179,17 @@ export function ManageFundsModal({ open, onOpenChange }: ManageFundsModalProps) 
           </Button>
           <Button
             onClick={handleSubmit}
-            disabled={!amount || !source || !reason}
+            disabled={!amount || !source || !reason || isSubmitting}
             className={type === "income" ? "bg-success hover:bg-success/90" : ""}
           >
-            {type === "income" ? "Add Funds" : "Log Expense"}
+            {isSubmitting ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Processing...
+              </>
+            ) : (
+              type === "income" ? "Add Funds" : "Log Expense"
+            )}
           </Button>
         </div>
       </DialogContent>
