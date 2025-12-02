@@ -58,6 +58,9 @@ export function CreateTaskModal({ open, onOpenChange, onSuccess, projectId }: Cr
       }
     }) || []
 
+  // Get available departments from project
+  const availableDepartments = currentProject?.departments || []
+
   const canSelectMultipleUsers = complexity === "medium" || complexity === "high"
   const canSelectDepartment = complexity === "high"
 
@@ -165,7 +168,32 @@ export function CreateTaskModal({ open, onOpenChange, onSuccess, projectId }: Cr
       } as const
 
       // Map selected user IDs (they should be MongoDB ObjectIds)
-      const assigneeIds = selectedUsers.filter(Boolean)
+      let assigneeIds = selectedUsers.filter(Boolean)
+
+      // If department is selected and no specific users, assign all department members
+      if (selectedDepartment && selectedDepartment !== 'none' && assigneeIds.length === 0) {
+        const selectedDept = availableDepartments.find((d: any) => {
+          const deptId = d._id?.toString() || d.id?.toString()
+          return deptId === selectedDepartment
+        })
+        
+        if (selectedDept && selectedDept.memberIds) {
+          // Get member IDs from department
+          const departmentMemberIds = selectedDept.memberIds
+            .map((memberId: any) => {
+              // Handle both populated and unpopulated memberIds
+              if (typeof memberId === 'object' && memberId._id) {
+                return memberId._id.toString()
+              }
+              return memberId?.toString() || memberId
+            })
+            .filter(Boolean)
+          
+          if (departmentMemberIds.length > 0) {
+            assigneeIds = departmentMemberIds
+          }
+        }
+      }
 
       // Smart Status Assignment:
       // - If task has specific assignees AND "Everyone" is false -> "In Progress"
@@ -363,7 +391,22 @@ export function CreateTaskModal({ open, onOpenChange, onSuccess, projectId }: Cr
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">No department</SelectItem>
-                    {/* TODO: Implement department selection when backend supports it */}
+                    {availableDepartments.length === 0 ? (
+                      <SelectItem value="no-departments" disabled>
+                        No departments available
+                      </SelectItem>
+                    ) : (
+                      availableDepartments.map((dept: any) => {
+                        const deptId = dept._id?.toString() || dept.id?.toString() || dept.name
+                        const deptName = dept.name || 'Unnamed Department'
+                        const memberCount = dept.memberIds?.length || 0
+                        return (
+                          <SelectItem key={deptId} value={deptId}>
+                            {deptName} {memberCount > 0 && `(${memberCount} members)`}
+                          </SelectItem>
+                        )
+                      })
+                    )}
                   </SelectContent>
                 </Select>
               </div>

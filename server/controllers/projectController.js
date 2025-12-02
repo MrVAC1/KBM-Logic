@@ -391,6 +391,21 @@ export const getProjectDetails = async (req, res) => {
     // Populate members with user details (only for active members, not guests/pending)
     if (!isGuestOrPending) {
       await project.populate('members.userId', 'displayName email avatar photoURL');
+      
+      // Populate department memberIds with user details
+      // Note: departments.memberIds is an array of ObjectIds, so we need to populate each department separately
+      if (project.departments && project.departments.length > 0) {
+        for (let i = 0; i < project.departments.length; i++) {
+          const dept = project.departments[i];
+          if (dept.memberIds && dept.memberIds.length > 0) {
+            // Populate memberIds for this specific department
+            await User.populate(dept, {
+              path: 'memberIds',
+              select: 'displayName email avatar photoURL',
+            });
+          }
+        }
+      }
     }
     
     // If user is Guest/Pending, return "Safe" limited data only
@@ -433,6 +448,7 @@ export const getProjectDetails = async (req, res) => {
       },
       roles: extractRoleDefinitions(project.members),
       members: project.members, // Now populated with user details
+      departments: project.departments || [], // Include departments
       createdAt: project.createdAt,
       owner: {
         name: owner?.displayName || owner?.email || 'Unknown',
