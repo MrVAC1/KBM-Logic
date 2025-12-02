@@ -40,6 +40,7 @@ const ALL_PERMISSIONS = [
   'can_manage_salaries',
   'can_manage_work_schedule',
   'can_delete_project',
+  'can_generate_reports',
   // Notification permissions
   'notify_on_financial_risk',
   'notify_on_task_assignment',

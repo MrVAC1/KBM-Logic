@@ -14,6 +14,7 @@ import { InvestorReportModal } from "@/components/investor-report-modal"
 import { Tooltip as UITooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { VelocityCard } from "@/components/velocity-card"
 import { useParams } from "react-router-dom"
+import { toast } from "sonner"
 
 export default function FinancialDashboardPage() {
   const { projectId: urlProjectId } = useParams<{ projectId?: string }>()
@@ -41,6 +42,7 @@ export default function FinancialDashboardPage() {
         setStats(data)
       } catch (error: any) {
         console.error('Failed to fetch stats:', error)
+        toast.error('Could not load financial data. Please try again.')
       } finally {
         setLoading(false)
       }
@@ -63,14 +65,14 @@ export default function FinancialDashboardPage() {
     }))
   }, [stats])
 
-  // Get current values
-  const currentPV = stats?.current?.PV || 0
-  const currentAC = stats?.current?.AC || 0
-  const currentEV = stats?.current?.EV || 0
+  // Get current values with safety checks
+  const currentPV = stats?.current?.PV ?? 0
+  const currentAC = stats?.current?.AC ?? 0
+  const currentEV = stats?.current?.EV ?? 0
 
-  // Calculate variances
-  const scheduleVariance = stats?.variances?.scheduleVariance || (currentEV - currentPV)
-  const costVariance = stats?.variances?.costVariance || (currentEV - currentAC)
+  // Calculate variances with fallback
+  const scheduleVariance = stats?.variances?.scheduleVariance ?? (currentEV - currentPV)
+  const costVariance = stats?.variances?.costVariance ?? (currentEV - currentAC)
 
   // Budget health calculation (based on PV as total planned budget)
   const totalBudget = currentPV || 0

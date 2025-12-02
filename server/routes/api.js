@@ -145,7 +145,7 @@ router.put('/projects/:projectId/members/me/notifications', verifyToken, checkDa
 
 // Report routes
 import { getInvestorReport } from '../controllers/reportController.js';
-router.get('/projects/:projectId/reports/investor', verifyToken, checkDatabaseConnection, checkProjectMember, getInvestorReport);
+router.get('/projects/:projectId/reports/investor', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_generate_reports'), getInvestorReport);
 
 export default router;
 

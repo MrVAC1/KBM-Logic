@@ -3,6 +3,7 @@ import Task from '../models/Task.js';
 import User from '../models/User.js';
 import Expense from '../models/Expense.js';
 import logger from '../utils/logger.js';
+import { normalizeDate } from '../utils/dateUtils.js';
 
 /**
  * Calculate daily rate for a user based on monthly salary and work schedule
@@ -15,10 +16,16 @@ export function calculateDailyRate(monthlySalary, workSchedule) {
     return 0;
   }
 
-  // Default work schedule if not provided
-  const workingDaysPerWeek = workSchedule?.workingDaysPerWeek || 5;
-  const daysOffPerWeek = workSchedule?.daysOffPerWeek || 2;
-  const hoursPerDay = workSchedule?.hoursPerDay || 8;
+  // Default work schedule if not provided or invalid
+  const workingDaysPerWeek = (workSchedule && typeof workSchedule.workingDaysPerWeek === 'number') 
+    ? workSchedule.workingDaysPerWeek 
+    : 5;
+  const daysOffPerWeek = (workSchedule && typeof workSchedule.daysOffPerWeek === 'number')
+    ? workSchedule.daysOffPerWeek
+    : 2;
+  const hoursPerDay = (workSchedule && typeof workSchedule.hoursPerDay === 'number')
+    ? workSchedule.hoursPerDay
+    : 8;
 
   // Calculate working days per month (approx)
   // Average working days per month = (workingDaysPerWeek / 7) * 30.44
@@ -39,12 +46,17 @@ export function calculateHourlyRate(monthlySalary, workSchedule) {
     return 0;
   }
 
-  const workingDaysPerWeek = workSchedule?.workingDaysPerWeek || 5;
-  const hoursPerDay = workSchedule?.hoursPerDay || 8;
+  // Default work schedule if not provided or invalid
+  const workingDaysPerWeek = (workSchedule && typeof workSchedule.workingDaysPerWeek === 'number')
+    ? workSchedule.workingDaysPerWeek
+    : 5;
+  const hoursPerDay = (workSchedule && typeof workSchedule.hoursPerDay === 'number')
+    ? workSchedule.hoursPerDay
+    : 8;
 
-  // Calculate working hours per month
-  const workingDaysPerMonth = (workingDaysPerWeek / 7) * 30.44;
-  const workingHoursPerMonth = workingDaysPerMonth * hoursPerDay;
+  // Calculate working hours per month using formula: (workingDaysPerWeek * 4.33) * hoursPerDay
+  // 4.33 represents average weeks per month (30.44 days / 7 days per week)
+  const workingHoursPerMonth = (workingDaysPerWeek * 4.33) * hoursPerDay;
 
   // Hourly rate = Monthly Salary / Working Hours per Month
   return monthlySalary / workingHoursPerMonth;
@@ -77,11 +89,12 @@ export async function calculatePV(project, date) {
         continue;
       }
 
-      const startDate = new Date(task.startDate);
-      const deadline = new Date(task.deadline);
+      const startDate = normalizeDate(task.startDate);
+      const deadline = normalizeDate(task.deadline);
+      const targetDate = normalizeDate(date);
 
       // Skip if date is before task starts
-      if (date < startDate) {
+      if (targetDate.getTime() < startDate.getTime()) {
         continue;
       }
 
@@ -109,12 +122,12 @@ export async function calculatePV(project, date) {
       }
 
       // If task is fully completed by this date, add full budget
-      if (date >= deadline) {
+      if (targetDate.getTime() >= deadline.getTime()) {
         totalPV += taskBudget;
       } else {
-        // Calculate linear daily portion
-        const taskDuration = Math.max(1, Math.ceil((deadline - startDate) / (1000 * 60 * 60 * 24))); // Days
-        const daysSinceStart = Math.max(0, Math.ceil((date - startDate) / (1000 * 60 * 60 * 24))); // Days
+        // Calculate linear daily portion (using normalized dates)
+        const taskDuration = Math.max(1, Math.ceil((deadline.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))); // Days
+        const daysSinceStart = Math.max(0, Math.ceil((targetDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))); // Days
         const dailyPortion = taskBudget / taskDuration;
         const partialPV = Math.min(taskBudget, dailyPortion * daysSinceStart);
         totalPV += partialPV;
@@ -200,10 +213,20 @@ export async function calculateAC(project, date) {
   try {
     const projectId = project._id || project.id;
 
+    // Normalize target date for consistent comparison
+    const targetDate = normalizeDate(date);
+
     // Get cumulative AC from snapshots up to this date
     if (project.evmSnapshots && project.evmSnapshots.length > 0) {
       const snapshotsUpToDate = project.evmSnapshots.filter(
-        snapshot => new Date(snapshot.date) <= date
+        snapshot => {
+          try {
+            return normalizeDate(snapshot.date).getTime() <= targetDate.getTime();
+          } catch (error) {
+            logger.warn(`Error normalizing snapshot date: ${error.message}`);
+            return false;
+          }
+        }
       );
 
       if (snapshotsUpToDate.length > 0) {
@@ -214,7 +237,8 @@ export async function calculateAC(project, date) {
     }
 
     // If no snapshots, calculate from project start date
-    const projectStartDate = project.createdAt || new Date();
+    // Normalize dates to prevent timezone/off-by-one-day errors
+    const projectStartDate = normalizeDate(project.createdAt || new Date());
     
     // Calculate daily costs from salaries and expenses
     let totalAC = 0;
@@ -227,18 +251,18 @@ export async function calculateAC(project, date) {
       if (user && user.monthlySalary && user.monthlySalary > 0) {
         const dailyRate = calculateDailyRate(user.monthlySalary, project.workSchedule);
         
-        // Calculate days from project start to target date
-        const daysSinceStart = Math.max(0, Math.ceil((date - projectStartDate) / (1000 * 60 * 60 * 24)));
+        // Calculate days from project start to target date (using normalized dates)
+        const daysSinceStart = Math.max(0, Math.ceil((targetDate.getTime() - projectStartDate.getTime()) / (1000 * 60 * 60 * 24)));
         totalAC += dailyRate * daysSinceStart;
       }
     }
 
-    // Add monthly expenses (adjusted for frequency)
+    // Add monthly expenses (adjusted for frequency) from Expense collection
     const expenses = await Expense.find({ projectId }).lean();
     for (const expense of expenses) {
-      const expenseStartDate = new Date(expense.createdAt || projectStartDate);
-      if (date >= expenseStartDate) {
-        const daysSinceExpenseStart = Math.max(0, Math.ceil((date - expenseStartDate) / (1000 * 60 * 60 * 24)));
+      const expenseStartDate = normalizeDate(expense.createdAt || projectStartDate);
+      if (targetDate.getTime() >= expenseStartDate.getTime()) {
+        const daysSinceExpenseStart = Math.max(0, Math.ceil((targetDate.getTime() - expenseStartDate.getTime()) / (1000 * 60 * 60 * 24)));
         
         let expenseCost = 0;
         switch (expense.frequency) {
@@ -258,6 +282,53 @@ export async function calculateAC(project, date) {
             expenseCost = expense.amount * Math.ceil(daysSinceExpenseStart / 30.44); // Default to monthly
         }
         totalAC += expenseCost;
+      }
+    }
+
+    // Add fixed costs from project.fixedCosts array (Settings -> Costs)
+    if (project.fixedCosts && Array.isArray(project.fixedCosts) && project.fixedCosts.length > 0) {
+      for (const fixedCost of project.fixedCosts) {
+        // Validate fixedCost structure
+        if (!fixedCost || typeof fixedCost !== 'object') {
+          logger.warn(`Invalid fixedCost structure: ${JSON.stringify(fixedCost)}`);
+          continue;
+        }
+        
+        // Validate amount
+        const amount = typeof fixedCost.amount === 'number' ? fixedCost.amount : 0;
+        if (amount <= 0) {
+          continue; // Skip invalid amounts
+        }
+        
+        const fixedCostStartDate = normalizeDate(projectStartDate);
+        if (targetDate.getTime() >= fixedCostStartDate.getTime()) {
+          const daysSinceStart = Math.max(0, Math.ceil((targetDate.getTime() - fixedCostStartDate.getTime()) / (1000 * 60 * 60 * 24)));
+          
+          let fixedCostAmount = 0;
+          const frequency = fixedCost.frequency || 'monthly'; // Default to monthly if not specified
+          
+          switch (frequency) {
+            case 'daily':
+              fixedCostAmount = amount * daysSinceStart;
+              break;
+            case 'weekly':
+              fixedCostAmount = amount * Math.ceil(daysSinceStart / 7);
+              break;
+            case 'monthly':
+              fixedCostAmount = amount * Math.ceil(daysSinceStart / 30.44);
+              break;
+            case 'yearly':
+              fixedCostAmount = amount * Math.ceil(daysSinceStart / 365);
+              break;
+            case 'one-time':
+              // One-time cost applied once if date is after project start
+              fixedCostAmount = amount;
+              break;
+            default:
+              fixedCostAmount = amount * Math.ceil(daysSinceStart / 30.44); // Default to monthly
+          }
+          totalAC += fixedCostAmount;
+        }
       }
     }
 
@@ -298,7 +369,7 @@ export async function calculateDailyActualCost(projectId, date = new Date()) {
       }
     }
 
-    // Calculate daily expenses (convert all to daily equivalent)
+    // Calculate daily expenses (convert all to daily equivalent) from Expense collection
     const expenses = await Expense.find({ projectId }).lean();
     for (const expense of expenses) {
       const expenseStartDate = new Date(expense.createdAt);
@@ -323,6 +394,40 @@ export async function calculateDailyActualCost(projectId, date = new Date()) {
             dailyExpenseAmount = expense.amount / 30.44; // Default to monthly
         }
         dailyCost += dailyExpenseAmount;
+      }
+    }
+
+    // Add daily fixed costs from project.fixedCosts array (Settings -> Costs)
+    if (project.fixedCosts && Array.isArray(project.fixedCosts) && project.fixedCosts.length > 0) {
+      for (const fixedCost of project.fixedCosts) {
+        const fixedCostStartDate = new Date(project.createdAt);
+        fixedCostStartDate.setHours(0, 0, 0, 0);
+        
+        if (targetDate >= fixedCostStartDate) {
+          let dailyFixedCostAmount = 0;
+          switch (fixedCost.frequency) {
+            case 'daily':
+              dailyFixedCostAmount = fixedCost.amount;
+              break;
+            case 'weekly':
+              dailyFixedCostAmount = fixedCost.amount / 7;
+              break;
+            case 'monthly':
+              dailyFixedCostAmount = fixedCost.amount / 30.44;
+              break;
+            case 'yearly':
+              dailyFixedCostAmount = fixedCost.amount / 365;
+              break;
+            case 'one-time':
+              // One-time costs are not included in daily calculation
+              // They are applied once when the project starts
+              dailyFixedCostAmount = 0;
+              break;
+            default:
+              dailyFixedCostAmount = fixedCost.amount / 30.44; // Default to monthly
+          }
+          dailyCost += dailyFixedCostAmount;
+        }
       }
     }
 

@@ -1,11 +1,24 @@
+/**
+ * @deprecated This file is deprecated and should not be used.
+ * All financial calculations should use evmEngine.js instead.
+ * 
+ * This file is kept for reference only and may be removed in a future version.
+ * 
+ * Migration path:
+ * - Use calculatePV() from evmEngine.js instead of calculatePlannedValue()
+ * - Use calculateAC() from evmEngine.js instead of calculateActualCost()
+ */
+
 import Task from '../models/Task.js';
 import Transaction from '../models/Transaction.js';
 import logger from '../utils/logger.js';
 
 /**
+ * @deprecated Use calculatePV() from evmEngine.js instead
  * Calculate Planned Value (S-Curve) based on tasks and fixed costs
  */
 export const calculatePlannedValue = async (projectId, projectStartDate, projectEndDate, fixedCosts = []) => {
+  logger.warn('calculatePlannedValue from budgetEngine.js is deprecated. Use calculatePV() from evmEngine.js instead.');
   try {
     const tasks = await Task.find({ projectId, status: { $ne: 'Done' } });
     const dayDiff = Math.ceil((projectEndDate - projectStartDate) / (1000 * 60 * 60 * 24));
@@ -63,9 +76,11 @@ export const calculatePlannedValue = async (projectId, projectStartDate, project
 };
 
 /**
+ * @deprecated Use calculateAC() from evmEngine.js instead
  * Calculate Actual Cost from time logs and transactions
  */
 export const calculateActualCost = async (projectId) => {
+  logger.warn('calculateActualCost from budgetEngine.js is deprecated. Use calculateAC() from evmEngine.js instead.');
   try {
     const tasks = await Task.find({ projectId });
     const transactions = await Transaction.find({ projectId });
@@ -93,5 +108,3 @@ export const calculateActualCost = async (projectId) => {
     throw error;
   }
 };
-
-

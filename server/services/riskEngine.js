@@ -1,5 +1,7 @@
 import Task from '../models/Task.js';
-import { calculateActualCost } from './budgetEngine.js';
+// Note: calculateActualCost from budgetEngine.js is deprecated
+// This import is kept for backward compatibility but the function is not actively used
+// The risk calculation does not currently use actual cost values
 import logger from '../utils/logger.js';
 
 /**

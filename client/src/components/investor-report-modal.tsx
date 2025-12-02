@@ -372,11 +372,13 @@ export function InvestorReportModal({
 
   // Generate timeline data for chart (last 6 months)
   const generateTimelineData = () => {
-    if (!reportData) return []
+    if (!reportData?.financials || !reportData?.project) {
+      return []
+    }
     
     const data = []
-    const today = new Date(reportData.project.currentDate)
-    const startDate = new Date(reportData.project.startDate)
+    const today = new Date(reportData.project?.currentDate || new Date())
+    const startDate = new Date(reportData.project?.startDate || new Date())
     
     // Generate monthly data points
     for (let i = 5; i >= 0; i--) {
@@ -386,13 +388,15 @@ export function InvestorReportModal({
       if (date >= startDate) {
         // Calculate approximate values for each month
         const monthsSinceStart = (date.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 30.44)
+        const plannedTotal = reportData.financials?.plannedTotal ?? 0
+        const actualTotal = reportData.financials?.actualTotal ?? 0
         const plannedValue = Math.min(
-          reportData.financials.plannedTotal,
-          (reportData.financials.plannedTotal * monthsSinceStart) / 6
+          plannedTotal,
+          (plannedTotal * monthsSinceStart) / 6
         )
         const actualValue = Math.min(
-          reportData.financials.actualTotal,
-          (reportData.financials.actualTotal * monthsSinceStart) / 6
+          actualTotal,
+          (actualTotal * monthsSinceStart) / 6
         )
         
         data.push({
@@ -408,7 +412,7 @@ export function InvestorReportModal({
       // No data points generated, create start and current
       return [
         { month: 'Start', planned: 0, actual: 0 },
-        { month: 'Current', planned: reportData.financials.plannedTotal, actual: reportData.financials.actualTotal },
+        { month: 'Current', planned: reportData.financials?.plannedTotal ?? 0, actual: reportData.financials?.actualTotal ?? 0 },
       ]
     } else if (data.length === 1) {
       // Only one data point, add a start point at 0
@@ -475,7 +479,7 @@ export function InvestorReportModal({
                 <h1 className="text-3xl font-bold">{reportData.project.name}</h1>
                 <p className="text-muted-foreground mt-1">{reportData.project.description}</p>
                 <p className="text-sm text-muted-foreground mt-2">
-                  Report Generated: {new Date(reportData.project.currentDate).toLocaleDateString('en-US', { 
+                  Report Generated: {new Date(reportData.project?.currentDate || new Date()).toLocaleDateString('en-US', { 
                     year: 'numeric', 
                     month: 'long', 
                     day: 'numeric' 
@@ -491,9 +495,9 @@ export function InvestorReportModal({
                     <CardTitle className="text-sm font-medium text-muted-foreground">Burn Rate</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-3xl font-bold">${reportData.burnRate.monthly.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                    <div className="text-3xl font-bold">${(reportData.burnRate?.monthly ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
                     <p className="text-xs text-muted-foreground mt-1">per month</p>
-                    <p className="text-xs text-muted-foreground">${reportData.burnRate.daily.toLocaleString(undefined, { maximumFractionDigits: 0 })} per day</p>
+                    <p className="text-xs text-muted-foreground">${(reportData.burnRate?.daily ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} per day</p>
                   </CardContent>
                 </Card>
 
@@ -502,11 +506,11 @@ export function InvestorReportModal({
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                       Runway
-                      {getBatteryIcon(reportData.runway.status)}
+                      {getBatteryIcon(reportData.runway?.status ?? 'critical')}
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    {reportData.runway.status === 'infinite' ? (
+                    {reportData.runway?.status === 'infinite' ? (
                       <>
                         <div className="text-3xl font-bold text-green-500">Infinite</div>
                         <p className="text-xs text-muted-foreground mt-1">No burn rate detected</p>
@@ -514,17 +518,17 @@ export function InvestorReportModal({
                     ) : (
                       <>
                         <div className="text-3xl font-bold">
-                          {reportData.runway.months !== null && reportData.runway.months < 1 && reportData.runway.months > 0
+                          {(reportData.runway?.months !== null && reportData.runway?.months !== undefined && reportData.runway.months < 1 && reportData.runway.months > 0)
                             ? '< 1'
-                            : reportData.runway.months?.toFixed(1) || '0.0'
+                            : (reportData.runway?.months?.toFixed(1) ?? '0.0')
                           }
                         </div>
                         <p className="text-xs text-muted-foreground mt-1">months remaining</p>
-                        <p className="text-xs text-muted-foreground">{reportData.runway.message}</p>
+                        <p className="text-xs text-muted-foreground">{reportData.runway?.message ?? 'Calculating...'}</p>
                         {/* Battery Visual */}
                         <div className="mt-3 h-2 bg-muted rounded-full overflow-hidden">
                           <div 
-                            className={`h-full ${getBatteryColor(reportData.runway.status)} transition-all`}
+                            className={`h-full ${getBatteryColor(reportData.runway?.status ?? 'critical')} transition-all`}
                             style={{ 
                               width: `${Math.min(100, Math.max(0, (reportData.runway.months || 0) / 12 * 100))}%` 
                             }}
@@ -541,23 +545,23 @@ export function InvestorReportModal({
                     <CardTitle className="text-sm font-medium text-muted-foreground">Budget Variance</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className={`text-3xl font-bold ${reportData.financials.variance >= 0 ? 'text-destructive' : 'text-green-500'}`}>
-                      {reportData.financials.variance >= 0 ? '+' : ''}${Math.abs(reportData.financials.variance).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    <div className={`text-3xl font-bold ${(reportData.financials?.variance ?? 0) >= 0 ? 'text-destructive' : 'text-green-500'}`}>
+                      {(reportData.financials?.variance ?? 0) >= 0 ? '+' : ''}${Math.abs(reportData.financials?.variance ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
-                      {reportData.financials.variance >= 0 ? 'Over budget' : 'Under budget'}
+                      {(reportData.financials?.variance ?? 0) >= 0 ? 'Over budget' : 'Under budget'}
                     </p>
                     <div className="flex items-center gap-1 mt-2">
-                      {reportData.financials.variance >= 0 ? (
+                      {(reportData.financials?.variance ?? 0) >= 0 ? (
                         <TrendingUp className="h-4 w-4 text-destructive" />
                       ) : (
                         <TrendingDown className="h-4 w-4 text-green-500" />
                       )}
-                      {reportData.financials.plannedTotal > 0 ? (
+                      {(reportData.financials?.plannedTotal ?? 0) > 0 ? (
                         <span className="text-xs text-muted-foreground">
-                          {(Math.abs(reportData.financials.variance / reportData.financials.plannedTotal) * 100).toFixed(1)}%
+                          {(Math.abs((reportData.financials?.variance ?? 0) / (reportData.financials?.plannedTotal ?? 1)) * 100).toFixed(1)}%
                         </span>
-                      ) : reportData.financials.actualTotal > 0 ? (
+                      ) : (reportData.financials?.actualTotal ?? 0) > 0 ? (
                         <span className="text-xs text-muted-foreground">N/A</span>
                       ) : (
                         <span className="text-xs text-muted-foreground">0.0%</span>
@@ -622,11 +626,11 @@ export function InvestorReportModal({
                   <div className="grid grid-cols-2 gap-4 mt-4">
                     <div className="text-center p-4 border rounded-lg">
                       <p className="text-sm text-muted-foreground">Planned Total</p>
-                      <p className="text-2xl font-bold mt-1">${reportData.financials.plannedTotal.toLocaleString()}</p>
+                      <p className="text-2xl font-bold mt-1">${(reportData.financials?.plannedTotal ?? 0).toLocaleString()}</p>
                     </div>
                     <div className="text-center p-4 border rounded-lg">
                       <p className="text-sm text-muted-foreground">Actual Total</p>
-                      <p className="text-2xl font-bold mt-1">${reportData.financials.actualTotal.toLocaleString()}</p>
+                      <p className="text-2xl font-bold mt-1">${(reportData.financials?.actualTotal ?? 0).toLocaleString()}</p>
                     </div>
                   </div>
                 </CardContent>
