@@ -14,6 +14,8 @@ import { Tooltip as UITooltip, TooltipContent, TooltipProvider, TooltipTrigger }
 import { VelocityCard } from "@/components/velocity-card"
 import { useParams } from "react-router-dom"
 import { toast } from "sonner"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { format } from "date-fns"
 
 export default function FinancialDashboardPage() {
   const { projectId: urlProjectId } = useParams<{ projectId?: string }>()
@@ -29,6 +31,59 @@ export default function FinancialDashboardPage() {
   const [loading, setLoading] = useState(false)
   const [chartLoading, setChartLoading] = useState(false)
   const [transactionRefreshTrigger, setTransactionRefreshTrigger] = useState(0)
+  
+  // Date range filter state
+  type DateRangeType = 'last_30_days' | 'this_month' | 'this_year' | 'all_time'
+  const [dateRange, setDateRange] = useState<DateRangeType>('this_month')
+  
+  // Calculate date range based on selection
+  const getDateRange = useMemo(() => {
+    const today = new Date()
+    today.setHours(23, 59, 59, 999) // End of today
+    
+    let from: Date
+    let to: Date = today
+    
+    switch (dateRange) {
+      case 'last_30_days':
+        from = new Date(today)
+        from.setDate(from.getDate() - 30)
+        from.setHours(0, 0, 0, 0)
+        break
+      case 'this_month':
+        from = new Date(today.getFullYear(), today.getMonth(), 1)
+        from.setHours(0, 0, 0, 0)
+        break
+      case 'this_year':
+        from = new Date(today.getFullYear(), 0, 1)
+        from.setHours(0, 0, 0, 0)
+        break
+      case 'all_time':
+        // Use project start date if available, otherwise use 1 year ago
+        const projectStart = currentProject?.createdAt 
+          ? new Date(currentProject.createdAt)
+          : new Date(today.getFullYear() - 1, today.getMonth(), today.getDate())
+        from = new Date(projectStart)
+        from.setHours(0, 0, 0, 0)
+        // Use project deadline if available, otherwise use today
+        if (currentProject?.deadline) {
+          to = new Date(currentProject.deadline)
+          to.setHours(23, 59, 59, 999)
+        }
+        break
+      default:
+        from = new Date(today.getFullYear(), today.getMonth(), 1)
+        from.setHours(0, 0, 0, 0)
+    }
+    
+    return { from, to }
+  }, [dateRange, currentProject])
+  
+  // Format date range for display
+  const dateRangeLabel = useMemo(() => {
+    const { from, to } = getDateRange
+    return `${format(from, 'MMM d, yyyy')} - ${format(to, 'MMM d, yyyy')}`
+  }, [getDateRange])
 
   // Fetch summary stats (fast load for metric cards)
   const fetchSummaryStats = async () => {
@@ -36,7 +91,8 @@ export default function FinancialDashboardPage() {
 
     setLoading(true)
     try {
-      const response = await financialsAPI.getSummaryStats(projectId)
+      const { from, to } = getDateRange
+      const response = await financialsAPI.getSummaryStats(projectId, from, to)
       const data = response.data?.data || response.data
       setStats((prev: any) => ({
         ...prev,
@@ -56,7 +112,8 @@ export default function FinancialDashboardPage() {
 
     setChartLoading(true)
     try {
-      const response = await financialsAPI.getChartData(projectId)
+      const { from, to } = getDateRange
+      const response = await financialsAPI.getChartData(projectId, from, to)
       const data = response.data?.data || response.data
       setStats((prev: any) => ({
         ...prev,
@@ -87,7 +144,7 @@ export default function FinancialDashboardPage() {
       fetchStats()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId])
+  }, [projectId, dateRange])
 
   // Callback to refresh data after transaction creation
   const handleTransactionCreated = () => {
@@ -144,7 +201,25 @@ export default function FinancialDashboardPage() {
               <h1 className="text-3xl font-bold text-foreground">Financial Dashboard</h1>
               <p className="mt-2 text-muted-foreground">Earned Value Management & Budget Tracking</p>
             </div>
-            <div className="flex gap-3">
+            <div className="flex gap-3 items-center">
+              {/* Date Range Selector */}
+              <div className="flex items-center gap-2">
+                <Calendar className="h-4 w-4 text-muted-foreground" />
+                <Select value={dateRange} onValueChange={(value) => setDateRange(value as DateRangeType)}>
+                  <SelectTrigger className="w-[200px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="last_30_days">Last 30 Days</SelectItem>
+                    <SelectItem value="this_month">This Month</SelectItem>
+                    <SelectItem value="this_year">This Year</SelectItem>
+                    <SelectItem value="all_time">All Time</SelectItem>
+                  </SelectContent>
+                </Select>
+                <span className="text-sm text-muted-foreground hidden md:inline">
+                  {dateRangeLabel}
+                </span>
+              </div>
               {canViewFinancial && (
                 <Button variant="outline" onClick={() => setShowInvestorReport(true)}>
                   Investor Report
@@ -180,7 +255,9 @@ export default function FinancialDashboardPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-primary">${totalBudget.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
-                  <p className="text-xs text-muted-foreground mt-1">Budget baseline</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Budget baseline {dateRange !== 'all_time' && `(${dateRange.replace('_', ' ')})`}
+                  </p>
                 </CardContent>
               </Card>
                 </TooltipTrigger>
@@ -200,6 +277,7 @@ export default function FinancialDashboardPage() {
                   <div className="text-2xl font-bold">${actualSpent.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
                   <p className="text-xs text-muted-foreground mt-1">
                     {totalBudget > 0 ? ((actualSpent / totalBudget) * 100).toFixed(1) : '0'}% of PV
+                    {dateRange !== 'all_time' && ` (${dateRange.replace('_', ' ')})`}
                   </p>
                 </CardContent>
               </Card>
@@ -218,7 +296,9 @@ export default function FinancialDashboardPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-green-400">${currentEV.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
-                  <p className="text-xs text-muted-foreground mt-1">Work completed</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Work completed{dateRange !== 'all_time' && ` (${dateRange.replace('_', ' ')})`}
+                  </p>
                 </CardContent>
               </Card>
                 </TooltipTrigger>
@@ -260,7 +340,7 @@ export default function FinancialDashboardPage() {
                     {scheduleVariance >= 0 ? "+" : ""}${scheduleVariance.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {scheduleVariance < 0 ? "Behind schedule" : scheduleVariance > 0 ? "Ahead of schedule" : "On schedule"}
+                    {scheduleVariance < 0 ? `Behind schedule${dateRange !== 'all_time' ? ` (${dateRange.replace('_', ' ')})` : ''}` : scheduleVariance > 0 ? `Ahead of schedule${dateRange !== 'all_time' ? ` (${dateRange.replace('_', ' ')})` : ''}` : "On schedule"}
                   </p>
                 </CardContent>
               </Card>
@@ -303,7 +383,7 @@ export default function FinancialDashboardPage() {
                     {costVariance >= 0 ? "+" : ""}${costVariance.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {costVariance < 0 ? "Over budget" : costVariance > 0 ? "Under budget" : "On budget"}
+                    {costVariance < 0 ? `Over budget${dateRange !== 'all_time' ? ` (${dateRange.replace('_', ' ')})` : ''}` : costVariance > 0 ? `Under budget${dateRange !== 'all_time' ? ` (${dateRange.replace('_', ' ')})` : ''}` : "On budget"}
                   </p>
                 </CardContent>
               </Card>

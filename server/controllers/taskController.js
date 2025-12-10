@@ -118,7 +118,7 @@ export const createTask = async (req, res) => {
       deadline: taskData.deadline || undefined,
       estimateHours: estimateHours,
       plannedCost: plannedCost,
-      plannedValue: plannedCost, // PV driven by schedule * role rate
+      plannedValue: plannedCost, // PV = estimateHours (effort) × role rate (PHASE 1: effort-based, not duration-based)
       risk: taskData.risk || {
         probability: 1,
         impact: 1,

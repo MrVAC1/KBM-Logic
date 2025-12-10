@@ -130,9 +130,24 @@ export const tasks = {
 };
 
 export const financials = {
-  getStats: (projectId) => apiClient.get(`/projects/${projectId}/stats`),
-  getSummaryStats: (projectId) => apiClient.get(`/projects/${projectId}/stats?summary=true`),
-  getChartData: (projectId) => apiClient.get(`/projects/${projectId}/stats?chart=true`),
+  getStats: (projectId, from, to) => {
+    const params = new URLSearchParams()
+    if (from) params.append('from', from.toISOString().split('T')[0])
+    if (to) params.append('to', to.toISOString().split('T')[0])
+    return apiClient.get(`/projects/${projectId}/stats?${params.toString()}`)
+  },
+  getSummaryStats: (projectId, from, to) => {
+    const params = new URLSearchParams({ summary: 'true' })
+    if (from) params.append('from', from.toISOString().split('T')[0])
+    if (to) params.append('to', to.toISOString().split('T')[0])
+    return apiClient.get(`/projects/${projectId}/stats?${params.toString()}`)
+  },
+  getChartData: (projectId, from, to) => {
+    const params = new URLSearchParams({ chart: 'true' })
+    if (from) params.append('from', from.toISOString().split('T')[0])
+    if (to) params.append('to', to.toISOString().split('T')[0])
+    return apiClient.get(`/projects/${projectId}/stats?${params.toString()}`)
+  },
   createTransaction: (projectId, data) => apiClient.post(`/projects/${projectId}/transactions`, data),
   getTransactions: (projectId) => apiClient.get(`/projects/${projectId}/transactions`),
 };

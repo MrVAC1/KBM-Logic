@@ -102,8 +102,6 @@ export function TeamsTab() {
   const canManageRoles = hasPermission('can_manage_roles')
   const canManageSalaries = hasPermission('can_manage_salaries')
 
-  // Salary editing state (for Costs tab)
-
   // Expenses state
   const [expenses, setExpenses] = useState<any[]>([])
   const [expensesLoading, setExpensesLoading] = useState(true)
@@ -146,15 +144,6 @@ export function TeamsTab() {
       const data = response.data?.data || response.data
       const membersList = data.members || []
       setMembers(membersList)
-      
-      // Initialize salary values from fetched members
-      const initialSalaryValues: Record<string, string> = {}
-      membersList.forEach((member: ProjectMember) => {
-        if (member.monthlySalary !== undefined && member.monthlySalary !== null) {
-          initialSalaryValues[member.userId] = member.monthlySalary.toString()
-        }
-      })
-      setSalaryValues(initialSalaryValues)
     } catch (error: any) {
       console.error('Failed to fetch members:', error)
       toast.error(error.response?.data?.message || 'Failed to load members')
@@ -632,7 +621,7 @@ export function TeamsTab() {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-2">
-                            {canManageRoles && !member.isOwner && (
+                            {canManageRoles && (
                               <Button
                                 variant="outline"
                                 size="sm"

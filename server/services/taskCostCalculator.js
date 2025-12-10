@@ -59,44 +59,49 @@ function resolveRoleRateForDate(project, roleName, targetDate = new Date()) {
   return rate || 0;
 }
 
+/**
+ * Calculate working days per month dynamically based on work schedule
+ * PHASE 3 FIX: No hardcoded 21 days
+ * @param {Object} workSchedule - Project work schedule
+ * @returns {Number} - Working days per month
+ */
+function calculateWorkingDaysPerMonth(workSchedule) {
+  const workingDaysCount = Array.isArray(workSchedule?.workingDays) && workSchedule.workingDays.length > 0
+    ? workSchedule.workingDays.length
+    : 5; // Default Mon-Fri
+  
+  // Calculate working days per month: (workingDaysCount / 7) * average days per month
+  return (workingDaysCount / 7) * 30.4375;
+}
+
 function calculateHourlyFromMonthly(monthlyRate, workSchedule) {
   const hoursPerDay = workSchedule?.hoursPerDay || 8;
-  const workingDaysPerMonth = 21; // schedule-aware daily accrual baseline
+  // PHASE 3 FIX: Use dynamic calculation instead of hardcoded 21
+  const workingDaysPerMonth = calculateWorkingDaysPerMonth(workSchedule);
   const hoursPerMonth = hoursPerDay * workingDaysPerMonth;
   if (!monthlyRate || hoursPerMonth <= 0) return 0;
   return monthlyRate / hoursPerMonth;
 }
 
-function calculateTaskDurationHours(startDate, deadline, workSchedule, estimateHours) {
-  if (startDate && deadline) {
-    const workingDays = countWorkingDays(startDate, deadline, workSchedule);
-    if (workingDays > 0) {
-      const hoursPerDay = workSchedule?.hoursPerDay || 8;
-      return workingDays * hoursPerDay;
-    }
-  }
-
-  // Fallback to estimateHours when schedule is missing/incomplete
-  if (estimateHours && estimateHours > 0) {
-    return estimateHours;
-  }
-
-  return 0;
-}
-
 /**
- * Calculate planned cost/value for a task based on schedule-aware role rates
+ * Calculate planned cost/value for a task based on EFFORT (estimateHours), not duration
+ * PHASE 1 FIX: Use estimateHours directly. StartDate/Deadline are for timeline distribution only.
  * @param {Object} project - Project document
- * @param {Number} estimateHours - Estimated hours for the task
+ * @param {Number} estimateHours - Estimated hours for the task (EFFORT)
  * @param {Array} assigneeIds - Array of assignee user IDs
- * @param {Date} startDate - Task start date
- * @param {Date} deadline - Task deadline
+ * @param {Date} startDate - Task start date (for timeline distribution only)
+ * @param {Date} deadline - Task deadline (for timeline distribution only)
  * @returns {Number} - Planned cost
  */
 export async function calculateTaskPlannedCost(project, estimateHours, assigneeIds, startDate, deadline) {
   try {
-    const durationHours = calculateTaskDurationHours(startDate, deadline, project.workSchedule, estimateHours);
-    if (!durationHours || !assigneeIds || assigneeIds.length === 0) {
+    // PHASE 1 FIX: Use estimateHours (EFFORT) directly, not duration calculation
+    if (!estimateHours || estimateHours <= 0) {
+      logger.warn(`calculateTaskPlannedCost: estimateHours is missing or zero. Returning 0.`);
+      return 0;
+    }
+
+    if (!assigneeIds || assigneeIds.length === 0) {
       return 0;
     }
 
@@ -123,7 +128,9 @@ export async function calculateTaskPlannedCost(project, estimateHours, assigneeI
     }
 
     const averageHourlyRate = hourlyRates.reduce((sum, rate) => sum + rate, 0) / hourlyRates.length;
-    return durationHours * averageHourlyRate;
+    
+    // PHASE 1 FIX: PV = Effort × Rate (not Duration × Rate)
+    return estimateHours * averageHourlyRate;
   } catch (error) {
     logger.error(`Calculate Task Planned Cost Error: ${error.message}`, { error });
     return 0;

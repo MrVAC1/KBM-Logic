@@ -503,11 +503,6 @@ export const updateMemberRole = async (req, res) => {
       return sendError(res, 'Roles array or role name is required', 400);
     }
 
-    // Validate roles array
-    if (rolesArray.length === 0) {
-      return sendError(res, 'At least one role is required', 400);
-    }
-
     // Find the member
     const memberIndex = project.members.findIndex(
       m => m._id.toString() === memberId || m.userId.toString() === memberId
@@ -519,47 +514,69 @@ export const updateMemberRole = async (req, res) => {
 
     const targetMember = project.members[memberIndex];
     const targetMemberUserId = targetMember.userId;
+    const isOwner = targetMemberUserId.toString() === project.ownerId.toString();
 
-    // === OWNER PROTECTION: Cannot change owner's role ===
-    if (targetMemberUserId.toString() === project.ownerId.toString()) {
-      logger.warn(`User ${userId} attempted to change Owner's role in project ${project._id}`);
-      return sendError(res, 'Cannot change project owner\'s role. The Owner role is protected.', 403);
+    // === OWNER PROTECTION: Filter out "Owner" role from rolesArray ===
+    // The "Owner" role is implicit and cannot be assigned/unassigned
+    // Filter it out silently to prevent errors if it's accidentally included in the request
+    // This allows the owner to have functional roles assigned without issues
+    const hasOwnerRole = rolesArray.some(r => 
+      r === 'Owner' || r === 'owner' || r?.toLowerCase() === 'owner'
+    );
+    
+    if (hasOwnerRole) {
+      logger.info(`Filtering out "Owner" role from roles array for member ${targetMemberUserId} in project ${project._id}`);
+    }
+    
+    // Filter out "Owner" role (case-insensitive)
+    rolesArray = rolesArray.filter(role => {
+      const roleLower = typeof role === 'string' ? role.toLowerCase() : '';
+      return roleLower !== 'owner';
+    });
+
+    // Validate roles array (after filtering)
+    if (rolesArray.length === 0) {
+      return sendError(res, 'At least one functional role is required. The Owner role cannot be assigned and is automatically granted based on project ownership.', 400);
     }
 
-    // === OWNER PROTECTION: Cannot assign Owner role ===
-    if (rolesArray.includes('Owner')) {
-      logger.warn(`User ${userId} attempted to assign Owner role in project ${project._id}`);
-      return sendError(res, 'Cannot assign Owner role. The Owner role is protected and cannot be assigned.', 403);
-    }
+    // === OWNER PROTECTION: Allow owner to have functional roles ===
+    // In v3.0, the owner must have at least one functional role for financial calculations (PV/AC)
+    // We allow updating the owner's functional roles, but ownership status is immutable
+    if (!isOwner) {
+      // For non-owners, apply hierarchy checks
+      
+      // === HIERARCHY CHECK: Requester can only assign roles below them ===
+      for (const roleNameToCheck of rolesArray) {
+        if (!canModifyRole(project, userId, roleNameToCheck)) {
+          const requesterIndex = getUserRoleIndex(project, userId);
+          const targetIndex = getRoleIndex(roleNameToCheck, project);
+          logger.warn(`Hierarchy violation: User ${userId} (index ${requesterIndex}) attempted to assign role ${roleNameToCheck} (index ${targetIndex})`);
+          return sendError(res, `Access denied: You cannot assign the "${roleNameToCheck}" role. You can only assign roles below your own in the hierarchy.`, 403);
+        }
+      }
 
-    // === HIERARCHY CHECK: Requester can only assign roles below them ===
-    for (const roleNameToCheck of rolesArray) {
-      if (!canModifyRole(project, userId, roleNameToCheck)) {
+      // === HIERARCHY CHECK: Requester can only modify members with roles below them ===
+      const targetMemberCurrentRoles = Array.isArray(targetMember.roles) && targetMember.roles.length > 0
+        ? targetMember.roles
+        : (targetMember.roleName ? [targetMember.roleName] : ['Guest']);
+      
+      // Check if requester can modify any of the member's current roles
+      let canModify = false;
+      for (const currentRole of targetMemberCurrentRoles) {
+        if (canModifyRole(project, userId, currentRole)) {
+          canModify = true;
+          break;
+        }
+      }
+      
+      if (!canModify) {
         const requesterIndex = getUserRoleIndex(project, userId);
-        const targetIndex = getRoleIndex(roleNameToCheck, project);
-        logger.warn(`Hierarchy violation: User ${userId} (index ${requesterIndex}) attempted to assign role ${roleNameToCheck} (index ${targetIndex})`);
-        return sendError(res, `Access denied: You cannot assign the "${roleNameToCheck}" role. You can only assign roles below your own in the hierarchy.`, 403);
+        logger.warn(`Hierarchy violation: User ${userId} (index ${requesterIndex}) attempted to modify member with roles ${targetMemberCurrentRoles.join(', ')}`);
+        return sendError(res, `Access denied: You cannot modify members with these roles. You can only modify members with roles below your own in the hierarchy.`, 403);
       }
-    }
-
-    // === HIERARCHY CHECK: Requester can only modify members with roles below them ===
-    const targetMemberCurrentRoles = Array.isArray(targetMember.roles) && targetMember.roles.length > 0
-      ? targetMember.roles
-      : (targetMember.roleName ? [targetMember.roleName] : ['Guest']);
-    
-    // Check if requester can modify any of the member's current roles
-    let canModify = false;
-    for (const currentRole of targetMemberCurrentRoles) {
-      if (canModifyRole(project, userId, currentRole)) {
-        canModify = true;
-        break;
-      }
-    }
-    
-    if (!canModify) {
-      const requesterIndex = getUserRoleIndex(project, userId);
-      logger.warn(`Hierarchy violation: User ${userId} (index ${requesterIndex}) attempted to modify member with roles ${targetMemberCurrentRoles.join(', ')}`);
-      return sendError(res, `Access denied: You cannot modify members with these roles. You can only modify members with roles below your own in the hierarchy.`, 403);
+    } else {
+      // Owner can update their functional roles, but we skip hierarchy checks since owner has all permissions
+      logger.info(`Owner ${userId} updating their functional roles in project ${project._id}`);
     }
 
     // Aggregate permissions from all roles

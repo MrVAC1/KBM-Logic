@@ -6,7 +6,7 @@ import logger from '../utils/logger.js';
 import { normalizeDate, getEndOfDay } from '../utils/dateUtils.js';
 
 const DEFAULT_WORKING_DAYS = [1, 2, 3, 4, 5]; // Mon-Fri
-const WORKING_DAYS_PER_MONTH = 21; // Schedule-aware baseline used for AC/PV accrual
+// PHASE 3: Removed hardcoded WORKING_DAYS_PER_MONTH - now calculated dynamically
 
 function getWorkingDaySet(workSchedule) {
   const days = Array.isArray(workSchedule?.workingDays) && workSchedule.workingDays.length > 0
@@ -40,10 +40,27 @@ export function countWorkingDaysInclusive(startDate, endDate, workSchedule) {
   return workingDays;
 }
 
+/**
+ * Calculate working days per month dynamically based on work schedule
+ * PHASE 3 FIX: No hardcoded 21 days - calculates based on project settings
+ * @param {Object} workSchedule - Project work schedule
+ * @returns {Number} - Working days per month
+ */
+function calculateWorkingDaysPerMonth(workSchedule) {
+  const workingDaysCount = Array.isArray(workSchedule?.workingDays) && workSchedule.workingDays.length > 0
+    ? workSchedule.workingDays.length
+    : 5; // Default Mon-Fri
+  
+  // Calculate working days per month: (workingDaysCount / 7) * average days per month
+  // Average days per month = 365.25 / 12 = 30.4375
+  return (workingDaysCount / 7) * 30.4375;
+}
+
 function roleMonthlyRateToHourly(monthlyRate, workSchedule) {
   if (!monthlyRate || monthlyRate <= 0) return 0;
   const hoursPerDay = workSchedule?.hoursPerDay || 8;
-  const hoursPerMonth = hoursPerDay * WORKING_DAYS_PER_MONTH;
+  const workingDaysPerMonth = calculateWorkingDaysPerMonth(workSchedule);
+  const hoursPerMonth = hoursPerDay * workingDaysPerMonth;
   return hoursPerMonth > 0 ? monthlyRate / hoursPerMonth : 0;
 }
 
@@ -106,21 +123,43 @@ function averageHourlyRoleRate(project, assigneeIds, referenceDate) {
   return hourlyRates.reduce((sum, rate) => sum + rate, 0) / hourlyRates.length;
 }
 
+/**
+ * Calculate task budget based on EFFORT (estimateHours), not duration
+ * StartDate and Deadline are used ONLY for timeline distribution, not for calculating total PV
+ * @param {Object} project - Project document
+ * @param {Object} task - Task document
+ * @param {Date} referenceDate - Reference date for rate resolution
+ * @returns {Object} - { plannedValue, effortHours, avgHourlyRate, startDate, deadline }
+ */
 function calculateTaskBudget(project, task, referenceDate = new Date()) {
-  const hoursPerDay = project.workSchedule?.hoursPerDay || 8;
+  // PHASE 1 FIX: Use estimateHours (EFFORT) directly, not duration
+  const effortHours = task.estimateHours || 0;
+  
+  if (effortHours <= 0) {
+    // If estimateHours is missing or 0, return 0 PV (do NOT fallback to duration)
+    const taskId = task._id ? task._id.toString() : 'unknown';
+    logger.warn(`Task ${taskId} has missing or zero estimateHours. PV will be 0.`);
+    return {
+      plannedValue: 0,
+      effortHours: 0,
+      avgHourlyRate: 0,
+      startDate: task.startDate ? normalizeDate(task.startDate) : null,
+      deadline: task.deadline ? normalizeDate(task.deadline) : null,
+    };
+  }
+
   const startDate = task.startDate ? normalizeDate(task.startDate) : null;
   const deadline = task.deadline ? normalizeDate(task.deadline) : null;
 
-  const durationHours = (startDate && deadline)
-    ? countWorkingDaysInclusive(startDate, deadline, project.workSchedule) * hoursPerDay
-    : (task.estimateHours || 0);
-
+  // Get average hourly rate for assignees
   const avgHourlyRate = averageHourlyRoleRate(project, task.assignees || [], referenceDate || deadline || startDate || new Date());
-  const plannedValue = durationHours * avgHourlyRate;
+  
+  // PHASE 1 FIX: PV = Effort × Rate (not Duration × Rate)
+  const plannedValue = effortHours * avgHourlyRate;
 
   return {
     plannedValue,
-    durationHours,
+    effortHours, // Renamed from durationHours to reflect it's effort-based
     avgHourlyRate,
     startDate,
     deadline,
@@ -190,15 +229,8 @@ export function calculateDailyRate(monthlySalary, workSchedule) {
     return 0;
   }
 
-  const workingDaysCount = Array.isArray(workSchedule?.workingDays) && workSchedule.workingDays.length > 0
-    ? workSchedule.workingDays.length
-    : 5;
-
-  // Approximate working days per month based on schedule (fallback to 21)
-  const workingDaysPerMonth = workingDaysCount > 0
-    ? (workingDaysCount / 7) * 30.44
-    : WORKING_DAYS_PER_MONTH;
-
+  // PHASE 3 FIX: Use dynamic calculation instead of hardcoded value
+  const workingDaysPerMonth = calculateWorkingDaysPerMonth(workSchedule);
   return workingDaysPerMonth > 0 ? monthlySalary / workingDaysPerMonth : 0;
 }
 
@@ -226,8 +258,48 @@ export function calculateHourlyRate(monthlySalary, workSchedule) {
 }
 
 /**
+ * Calculate Budget at Completion (BAC) - Total PV of all tasks
+ * PHASE 2: BAC represents the total cost baseline (sum of all task PVs)
+ * @param {Object} project - Project document
+ * @returns {Promise<Number>} - Budget at Completion
+ */
+export async function calculateBAC(project) {
+  try {
+    if (!project) {
+      logger.warn('calculateBAC: project is null or undefined');
+      return 0;
+    }
+    
+    const projectId = project._id || project.id;
+    if (!projectId) {
+      logger.warn('calculateBAC: projectId is missing');
+      return 0;
+    }
+    
+    const tasks = await Task.find({ projectId }).lean();
+    
+    let totalBAC = 0;
+    for (const task of tasks) {
+      try {
+        const budget = calculateTaskBudget(project, task, new Date());
+        totalBAC += budget.plannedValue || 0;
+      } catch (taskError) {
+        logger.warn(`Error calculating budget for task ${task._id}: ${taskError.message}`);
+        // Continue with other tasks
+      }
+    }
+    
+    return totalBAC;
+  } catch (error) {
+    logger.error(`Calculate BAC Error: ${error.message}`, { error, projectId: project?._id || project?.id });
+    return 0;
+  }
+}
+
+/**
  * Calculate Planned Value (PV) for a specific date
  * PV represents the budgeted cost of work scheduled to be completed by a given date
+ * PHASE 1 FIX: Uses EFFORT (estimateHours) for total, distributes linearly across timeline
  * OPTIMIZED: Uses cached snapshots for historical dates to avoid recalculation
  * @param {Object} project - Project document
  * @param {Date} date - Target date
@@ -295,11 +367,14 @@ export async function calculatePV(project, date, startDate = null) {
         continue;
       }
 
-      // If task has no workable duration, use full budget
+      // PHASE 1 FIX: Use StartDate/Deadline ONLY for timeline distribution
+      // The total PV is already effort-based (estimateHours × Rate)
+      // We distribute this total linearly across the timeline
       const totalWorkingDays = Math.max(1, countWorkingDaysInclusive(adjustedStart, taskDeadline, project.workSchedule));
       const workedDaysUntilTarget = countWorkingDaysInclusive(adjustedStart, targetDate < taskDeadline ? targetDate : taskDeadline, project.workSchedule);
       const completionRatio = Math.min(1, workedDaysUntilTarget / totalWorkingDays);
 
+      // Distribute the effort-based PV across the timeline
       totalPV += budget.plannedValue * completionRatio;
     }
 
@@ -541,7 +616,9 @@ export async function calculateAC(project, date, startDate = null) {
         }
 
         const workingDays = countWorkingDaysInclusive(windowStart, inclusiveEnd, project.workSchedule);
-        const dailyRate = (entry.rate || 0) / WORKING_DAYS_PER_MONTH;
+        // PHASE 3 FIX: Use dynamic calculation instead of hardcoded WORKING_DAYS_PER_MONTH
+        const workingDaysPerMonth = calculateWorkingDaysPerMonth(project.workSchedule);
+        const dailyRate = (entry.rate || 0) / workingDaysPerMonth;
         totalAC += workingDays * dailyRate;
       }
     }
@@ -692,7 +769,9 @@ export async function calculateDailyActualCost(projectId, date = new Date()) {
         const roleName = resolveMemberRoleName(member);
         if (!roleName) continue;
         const monthlyRate = resolveRoleRateForDate(project, roleName, targetDate);
-        const dailyRate = monthlyRate / WORKING_DAYS_PER_MONTH;
+        // PHASE 3 FIX: Use dynamic calculation instead of hardcoded WORKING_DAYS_PER_MONTH
+        const workingDaysPerMonth = calculateWorkingDaysPerMonth(project.workSchedule);
+        const dailyRate = monthlyRate / workingDaysPerMonth;
         if (dailyRate > 0) {
           dailyCost += dailyRate;
         }
@@ -838,6 +917,45 @@ export async function calculateDailyActualCost(projectId, date = new Date()) {
 }
 
 /**
+ * Calculate Project Funds (Cash) - Income minus Non-Salary Expenses
+ * PHASE 2: Separates Cash Flow from Budget (BAC)
+ * @param {String} projectId - Project ID
+ * @returns {Promise<Number>} - Available project funds
+ */
+export async function calculateProjectFunds(projectId) {
+  try {
+    // Ensure projectId is valid
+    if (!projectId) {
+      logger.warn('calculateProjectFunds: projectId is missing');
+      return 0;
+    }
+
+    // Get all income transactions (type === '+')
+    const incomeTransactions = await Transaction.find({
+      projectId: projectId,
+      type: '+',
+    }).lean();
+    
+    const totalIncome = incomeTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
+    
+    // Get all non-salary expense transactions (type === '-')
+    // Note: Salary expenses are already in AC, so we only count manual expense transactions
+    const expenseTransactions = await Transaction.find({
+      projectId: projectId,
+      type: '-',
+    }).lean();
+    
+    const totalExpenses = expenseTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
+    
+    // Funds = Income - Manual Expenses (non-salary)
+    return totalIncome - totalExpenses;
+  } catch (error) {
+    logger.error(`Calculate Project Funds Error: ${error.message}`, { error, projectId });
+    return 0;
+  }
+}
+
+/**
  * Regenerate EVM snapshots starting from a specific date (inclusive)
  * Used when historical data changes (e.g., retroactive transactions)
  * @param {String} projectId - Project ID
@@ -877,4 +995,3 @@ export async function regenerateSnapshotsFromDate(projectId, startDate = new Dat
     cursor.setDate(cursor.getDate() + 1);
   }
 }
-

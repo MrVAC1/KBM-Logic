@@ -56,8 +56,10 @@ export function EditMemberRolesModal({
 
   useEffect(() => {
     if (open) {
-      // Initialize with current roles
-      setSelectedRoles([...currentRoles])
+      // Initialize with current roles, but filter out "Owner" role
+      // Owner role cannot be assigned/unassigned - it's implicit based on ownership
+      const filteredRoles = currentRoles.filter(role => role !== 'Owner' && role !== 'owner')
+      setSelectedRoles([...filteredRoles])
       setRolesLoading(false)
     }
   }, [open, currentRoles])
