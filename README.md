@@ -1,403 +1,197 @@
-# KBM Logic - Система Управління Проектами
+# KBM Logic v3.0
 
-## 🇺🇦 Українська Версія
-
-### Огляд
-
-**KBM Logic** - це гібридна система управління проектами, яка поєднує простоту Kanban з корпоративним фінансовим контролем. Система призначена для команд, яким потрібне як гнучке управління задачами (Kanban дошки), так і складне фінансове відстеження (S-Криві бюджетування, Управління Заробленою Вартістю).
-
-### Ключові Можливості
-
-- **Kanban Управління Задачами** - Візуальні дошки задач з drag-and-drop робочим процесом
-- **Динамічний Движок Ризиків** - Автоматична корекція оцінок ризиків на основі дедлайнів та бюджету
-- **S-Криве Бюджетування** - Криві Запланованої Вартості з відстеженням фактичних витрат
-- **Фінансова Панель** - Комплексне фінансове відстеження з EVM (Earned Value Management)
-- **Контроль Доступу на Основі Ролей** - Детальні дозволи для кожного члена проекту
-- **Звіти для Інвесторів** - PDF звіти з фільтром часового діапазону
-- **Управління Дедлайнами** - RBAC-захищене редагування цільових дат завершення
-
-### Технологічний Стек
-
-#### Frontend
-- **React 18** - UI бібліотека
-- **TypeScript** - Типобезпека
-- **Vite** - Інструмент збірки
-- **Tailwind CSS** - Стилізація
-- **Recharts** - Візуалізація даних (бюджетні криві, графіки)
-- **Firebase Auth** - Аутентифікація
-- **React Router** - Навігація
-- **Shadcn UI** - Бібліотека компонентів
-
-#### Backend
-- **Node.js** - Середовище виконання
-- **Express** - Web фреймворк
-- **MongoDB Atlas** - Хмарна база даних
-- **Mongoose** - ODM
-- **Firebase Admin** - Перевірка токенів
-- **bcryptjs** - Хешування паролів
-
-### Швидкий Старт
-
-#### Вимоги
-
-- Node.js 18+
-- MongoDB Atlas (хмарний екземпляр)
-- Firebase проект (для аутентифікації)
-
-#### Встановлення
-
-1. **Встановити всі залежності** (root, server, та client):
-```bash
-npm run install:all
-```
-
-2. **Налаштувати змінні середовища**:
-
-Створити `server/.env`:
-```env
-PORT=5000
-MONGODB_URI=mongodb+srv://username:password@cluster0.xxx.mongodb.net/kbm-logic?retryWrites=true&w=majority&appName=Cluster0
-FIREBASE_PROJECT_ID=your-firebase-project-id
-FIREBASE_PRIVATE_KEY=your-private-key
-FIREBASE_CLIENT_EMAIL=your-client-email
-CORS_ORIGIN=http://localhost:5173
-```
-
-Створити `client/.env`:
-```env
-VITE_API_URL=http://localhost:5000
-VITE_FIREBASE_API_KEY=your-firebase-api-key
-VITE_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
-VITE_FIREBASE_PROJECT_ID=your-firebase-project-id
-```
-
-### Запуск Серверів Розробки
-
-**Варіант 1: Запустити обидва сервери разом**
-```bash
-npm run dev
-```
-
-**Варіант 2: Запустити окремо**
-
-Термінал 1 - Server:
-```bash
-cd server
-npm run dev
-```
-
-Термінал 2 - Client:
-```bash
-cd client
-npm run dev
-```
-
-Додаток буде доступний на:
-- **Frontend**: http://localhost:5173
-- **Backend API**: http://localhost:5000
-
-### Структура Проекту
-
-```
-kbm-logic-v0.1/
-├── client/                 # React frontend
-│   ├── src/
-│   │   ├── components/     # UI компоненти
-│   │   ├── pages/          # Сторінки маршрутів
-│   │   ├── contexts/       # React контексти
-│   │   ├── services/       # API сервіси
-│   │   └── lib/            # Утиліти
-│   └── package.json
-├── server/                 # Node.js backend
-│   ├── controllers/       # Обробники маршрутів
-│   ├── models/            # Mongoose схеми
-│   ├── services/          # Бізнес-логіка (EVM, Budget engines)
-│   ├── middleware/        # Express middleware
-│   ├── routes/            # API маршрути
-│   ├── scripts/           # Скрипти міграції
-│   └── package.json
-├── docs/                  # Документація (English)
-│   ├── EVM_FINANCIAL_LOGIC.md
-│   ├── MODULES.md
-│   └── DATABASE.md
-├── docs_ukr/              # Документація (Українська)
-│   ├── EVM_FINANCIAL_LOGIC.md
-│   ├── MODULES.md
-│   └── DATABASE.md
-└── package.json           # Root package.json
-```
-
-### Документація
-
-#### Англійська Версія (`docs/`)
-- **[EVM Financial Logic](./docs/EVM_FINANCIAL_LOGIC.md)** - Формули PV, AC, EV, адаптивна гранулярність
-- **[Modules](./docs/MODULES.md)** - Опис модулів: Project Info, Kanban, Financial Dashboard, Investor Report
-- **[Database](./docs/DATABASE.md)** - MongoDB Atlas інтеграція, моделі, індекси
-
-#### Українська Версія (`docs_ukr/`)
-- **[EVM Фінансова Логіка](./docs_ukr/EVM_FINANCIAL_LOGIC.md)** - Формули PV, AC, EV, адаптивна гранулярність
-- **[Модулі](./docs_ukr/MODULES.md)** - Опис модулів: Інформація про Проект, Kanban, Фінансова Панель, Звіт для Інвесторів
-- **[База Даних](./docs_ukr/DATABASE.md)** - Інтеграція MongoDB Atlas, моделі, індекси
-
-### Основні Можливості Системи
-
-#### Фінансова Система (EVM)
-
-**Запланована Вартість (PV):**
-- Розраховується з задач та їх оцінок годин
-- Використовує місячні зарплати для розрахунку ставок
-- Враховує робочий графік проекту
-
-**Фактична Вартість (AC):**
-- **Джерело 1:** Зарплати (розраховані денні ставки)
-- **Джерело 2:** Фіксовані витрати (з частотою)
-- **Джерело 3:** Негативні транзакції (`type: '-'`)
-
-**Зароблена Вартість (EV):**
-- Розраховується з завершених задач (`status: 'Done'`)
-- Використовує бюджети задач на момент завершення
-
-**Бюджет:**
-- **Загальний Доступний Бюджет = PV (Базовий) + Позитивні Транзакції (Доходи)**
-- **Залишковий Бюджет = (PV + Доходи) - AC**
-
-#### Адаптивна Гранулярність
-
-Система використовує 5-рівневу систему для оптимізації щільності графіка (ціль: 30-60 точок):
-
-- < 60 днів: Щоденна вибірка
-- < 180 днів: Щотижнева вибірка
-- < 2 роки: Двотyzжнева вибірка
-- < 5 років: Щомісячна вибірка
-- ≥ 5 років: Квартальна вибірка
-
-#### Управління Дедлайнами
-
-- **Поле:** `Project.deadline` (Date, nullable)
-- **RBAC:** Вимагає дозвіл `can_manage_deadline`
-- **Валідація:** Дедлайн повинен бути строго після `project.createdAt`
-- **UI:** Редагування доступне тільки користувачам з дозволом
-
-#### Звіти для Інвесторів
-
-- **Фільтр Часового Діапазону:** 'all' | 'month' | 'year'
-- **PDF Експорт:** Генерація PDF звітів
-- **Метрики:** Burn Rate, Runway, Financials, Top Risks, Roadmap Status
-- **Команда:** Дані про команду (тільки для Власника)
-
-### Скрипти Міграції
-
-```bash
-# Очистити застарілі дозволи
-cd server
-npm run cleanup:permissions
-
-# Виправити дозволи дедлайну
-npm run fix:deadline-permissions
-```
-
-### Ліцензія
-
-Приватна - Всі права захищені
+**Hybrid Project Management System with Enterprise Financial Control**
 
 ---
 
-## 🇬🇧 English Version
+## 🇬🇧 English | [🇺🇦 Українська](#-українська)
 
 ### Overview
 
-**KBM Logic** is a hybrid project management system combining Kanban simplicity with enterprise financial control. The system is designed for teams that need both agile task management (Kanban boards) and sophisticated financial tracking (S-Curve budgeting, Earned Value Management).
+**KBM Logic v3.0** is a comprehensive project management platform that combines agile Kanban workflows with sophisticated Earned Value Management (EVM) financial tracking. Built on the MERN stack, it provides teams with both flexible task management and enterprise-grade budget control.
 
 ### Key Features
 
-- **Kanban Task Management** - Visual task boards with drag-and-drop workflow
-- **Dynamic Risk Engine** - Auto-adjusting risk scores based on deadlines and budget
-- **S-Curve Budgeting** - Planned Value curves with actual cost tracking
-- **Financial Dashboard** - Comprehensive financial tracking with EVM (Earned Value Management)
-- **Role-Based Access Control** - Granular permissions per project member
-- **Investor Reports** - PDF reports with time range filter
-- **Deadline Management** - RBAC-protected editing of target completion dates
+- **Kanban Task Management** - Visual drag-and-drop boards with 4-column workflow
+- **Earned Value Management** - Automated PV, AC, EV calculations with schedule-aware accrual
+- **Role-Based Access Control** - Hierarchical roles with granular permissions
+- **Financial Dashboard** - Real-time budget tracking with S-Curve visualization
+- **Time Tracking** - Built-in start/stop timer for tasks
+- **Risk Management** - Auto-calculated risk scores based on deadlines and budget
+- **Investor Reports** - PDF reports with time range filtering
 
 ### Tech Stack
 
-#### Frontend
-- **React 18** - UI library
-- **TypeScript** - Type safety
-- **Vite** - Build tool
-- **Tailwind CSS** - Styling
-- **Recharts** - Data visualization (budget curves, charts)
-- **Firebase Auth** - Authentication
-- **React Router** - Navigation
-- **Shadcn UI** - Component library
-
-#### Backend
-- **Node.js** - Runtime
-- **Express** - Web framework
-- **MongoDB Atlas** - Cloud database
-- **Mongoose** - ODM
-- **Firebase Admin** - Token verification
-- **bcryptjs** - Password hashing
+- **Frontend:** React 18, TypeScript, Vite, Tailwind CSS, Shadcn UI
+- **Backend:** Node.js, Express.js, MongoDB Atlas, Mongoose
+- **Authentication:** Firebase Auth
+- **Database:** MongoDB Atlas (cloud-hosted)
 
 ### Quick Start
 
-#### Prerequisites
+1. **Clone Repository**
+   ```bash
+   git clone <repository-url>
+   cd kbm-logic-v0.1
+   ```
 
-- Node.js 18+
-- MongoDB Atlas (cloud instance)
-- Firebase project (for authentication)
+2. **Install Dependencies**
+   ```bash
+   npm run install:all
+   ```
 
-#### Installation
+3. **Configure Environment**
+   - Create `server/.env` with MongoDB Atlas URI and Firebase credentials
+   - Create `client/.env` with Firebase configuration
+   - Place `firebase-service-account.json` in `server/` directory
 
-1. **Install all dependencies** (root, server, and client):
-```bash
-npm run install:all
-```
+4. **Run Development Servers**
+   ```bash
+   npm run dev
+   ```
 
-2. **Set up environment variables**:
-
-Create `server/.env`:
-```env
-PORT=5000
-MONGODB_URI=mongodb+srv://username:password@cluster0.xxx.mongodb.net/kbm-logic?retryWrites=true&w=majority&appName=Cluster0
-FIREBASE_PROJECT_ID=your-firebase-project-id
-FIREBASE_PRIVATE_KEY=your-private-key
-FIREBASE_CLIENT_EMAIL=your-client-email
-CORS_ORIGIN=http://localhost:5173
-```
-
-Create `client/.env`:
-```env
-VITE_API_URL=http://localhost:5000
-VITE_FIREBASE_API_KEY=your-firebase-api-key
-VITE_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
-VITE_FIREBASE_PROJECT_ID=your-firebase-project-id
-```
-
-### Run Development Servers
-
-**Option 1: Run both server and client together**
-```bash
-npm run dev
-```
-
-**Option 2: Run separately**
-
-Terminal 1 - Server:
-```bash
-cd server
-npm run dev
-```
-
-Terminal 2 - Client:
-```bash
-cd client
-npm run dev
-```
-
-The application will be available at:
-- **Frontend**: http://localhost:5173
-- **Backend API**: http://localhost:5000
-
-### Project Structure
-
-```
-kbm-logic-v0.1/
-├── client/                 # React frontend
-│   ├── src/
-│   │   ├── components/     # UI components
-│   │   ├── pages/          # Route pages
-│   │   ├── contexts/        # React contexts
-│   │   ├── services/       # API services
-│   │   └── lib/            # Utilities
-│   └── package.json
-├── server/                 # Node.js backend
-│   ├── controllers/       # Route handlers
-│   ├── models/            # Mongoose schemas
-│   ├── services/          # Business logic (EVM, Budget engines)
-│   ├── middleware/        # Express middleware
-│   ├── routes/            # API routes
-│   ├── scripts/           # Migration scripts
-│   └── package.json
-├── docs/                  # Documentation (English)
-│   ├── EVM_FINANCIAL_LOGIC.md
-│   ├── MODULES.md
-│   └── DATABASE.md
-├── docs_ukr/              # Documentation (Ukrainian)
-│   ├── EVM_FINANCIAL_LOGIC.md
-│   ├── MODULES.md
-│   └── DATABASE.md
-└── package.json           # Root package.json
-```
+   - Frontend: http://localhost:5173
+   - Backend API: http://localhost:5000
 
 ### Documentation
 
-#### English Version (`docs/`)
-- **[EVM Financial Logic](./docs/EVM_FINANCIAL_LOGIC.md)** - PV, AC, EV formulas, adaptive granularity
-- **[Modules](./docs/MODULES.md)** - Module descriptions: Project Info, Kanban, Financial Dashboard, Investor Report
-- **[Database](./docs/DATABASE.md)** - MongoDB Atlas integration, models, indexes
+#### English Documentation (`docs/`)
 
-#### Ukrainian Version (`docs_ukr/`)
-- **[EVM Фінансова Логіка](./docs_ukr/EVM_FINANCIAL_LOGIC.md)** - Формули PV, AC, EV, адаптивна гранулярність
-- **[Модулі](./docs_ukr/MODULES.md)** - Опис модулів: Інформація про Проект, Kanban, Фінансова Панель, Звіт для Інвесторів
-- **[База Даних](./docs_ukr/DATABASE.md)** - Інтеграція MongoDB Atlas, моделі, індекси
+1. **[Architecture and Setup](./docs/01-architecture-and-setup.md)**
+   - Tech stack overview
+   - MongoDB Atlas connection
+   - Environment configuration
+   - Development workflow
 
-### Core System Features
+2. **[Financial Engine](./docs/02-financial-engine.md)** ⭐ CRITICAL
+   - PV (Planned Value) - Automated calculation
+   - AC (Actual Cost) - Schedule-aware accrual
+   - EV (Earned Value) - Completed work value
+   - Dual timestamping (createdAt vs effectiveDate)
+   - Time Machine (Snapshot Regenerator)
 
-#### Financial System (EVM)
+3. **[Roles and Permissions](./docs/03-roles-and-permissions.md)**
+   - RBAC system overview
+   - Permission list and hierarchy rules
+   - Role-based compensation model
+   - Salary history tracking
 
-**Planned Value (PV):**
-- Calculated from tasks and their hour estimates
-- Uses monthly salaries to calculate rates
-- Accounts for project work schedule
+4. **[Tasks and Workflow](./docs/04-tasks-and-workflow.md)**
+   - Kanban board structure
+   - Task duration calculation (work schedule aware)
+   - Time tracking functionality
+   - Task lifecycle
 
-**Actual Cost (AC):**
-- **Source 1:** Salaries (calculated daily rates)
-- **Source 2:** Fixed Costs (with frequency)
-- **Source 3:** Negative Transactions (`type: '-'`)
+5. **[Database Schema](./docs/05-database-schema.md)**
+   - Project, Task, Transaction models
+   - User, Expense, Snapshot schemas
+   - Relationships and indexes
+   - Data integrity rules
 
-**Earned Value (EV):**
-- Calculated from completed tasks (`status: 'Done'`)
-- Uses task budgets at completion time
+---
 
-**Budget:**
-- **Total Available Budget = PV (Baseline) + Positive Transactions (Income)**
-- **Remaining Budget = (PV + Income) - AC**
+## 🇺🇦 Українська
 
-#### Adaptive Granularity
+### Огляд
 
-The system uses a 5-tier system to optimize chart density (target: 30-60 points):
+**KBM Logic v3.0** - це комплексна платформа управління проектами, яка поєднує гнучкі робочі процеси Kanban з складним фінансовим відстеженням Управління Заробленою Вартістю (EVM). Побудована на стеку MERN, вона надає командам як гнучке управління задачами, так і корпоративний контроль бюджету.
 
-- < 60 days: Daily sampling
-- < 180 days: Weekly sampling
-- < 2 years: Bi-weekly sampling
-- < 5 years: Monthly sampling
-- ≥ 5 years: Quarterly sampling
+### Ключові Можливості
 
-#### Deadline Management
+- **Управління Задачами Kanban** - Візуальні дошки з drag-and-drop та 4-колоночним робочим процесом
+- **Управління Заробленою Вартістю** - Автоматизовані розрахунки PV, AC, EV з нарахуванням з урахуванням розкладу
+- **Контроль Доступу на Основі Ролей** - Ієрархічні ролі з детальними дозволами
+- **Фінансова Панель** - Відстеження бюджету в реальному часі з візуалізацією S-Кривої
+- **Відстеження Часу** - Вбудований таймер старт/стоп для задач
+- **Управління Ризиками** - Автоматично розраховані оцінки ризиків на основі дедлайнів та бюджету
+- **Звіти для Інвесторів** - PDF звіти з фільтрацією за часовим діапазоном
 
-- **Field:** `Project.deadline` (Date, nullable)
-- **RBAC:** Requires `can_manage_deadline` permission
-- **Validation:** Deadline must be strictly after `project.createdAt`
-- **UI:** Editing available only to users with permission
+### Технологічний Стек
 
-#### Investor Reports
+- **Фронтенд:** React 18, TypeScript, Vite, Tailwind CSS, Shadcn UI
+- **Бекенд:** Node.js, Express.js, MongoDB Atlas, Mongoose
+- **Аутентифікація:** Firebase Auth
+- **База Даних:** MongoDB Atlas (хмарна)
 
-- **Time Range Filter:** 'all' | 'month' | 'year'
-- **PDF Export:** PDF report generation
-- **Metrics:** Burn Rate, Runway, Financials, Top Risks, Roadmap Status
-- **Team:** Team data (Owner only)
+### Швидкий Старт
 
-### Migration Scripts
+1. **Клонувати Репозиторій**
+   ```bash
+   git clone <repository-url>
+   cd kbm-logic-v0.1
+   ```
 
-```bash
-# Cleanup obsolete permissions
-cd server
-npm run cleanup:permissions
+2. **Встановити Залежності**
+   ```bash
+   npm run install:all
+   ```
 
-# Fix deadline permissions
-npm run fix:deadline-permissions
+3. **Налаштувати Середовище**
+   - Створіть `server/.env` з URI MongoDB Atlas та обліковими даними Firebase
+   - Створіть `client/.env` з конфігурацією Firebase
+   - Помістіть `firebase-service-account.json` в директорію `server/`
+
+4. **Запустити Сервери Розробки**
+   ```bash
+   npm run dev
+   ```
+
+   - Фронтенд: http://localhost:5173
+   - Backend API: http://localhost:5000
+
+### Документація
+
+#### Українська Документація (`docs_ukr/`)
+
+1. **[Архітектура та Налаштування](./docs_ukr/01-architecture-and-setup.md)**
+   - Огляд технологічного стеку
+   - Підключення до MongoDB Atlas
+   - Конфігурація середовища
+   - Робочий процес розробки
+
+2. **[Фінансовий Движок](./docs_ukr/02-financial-engine.md)** ⭐ КРИТИЧНО
+   - PV (Запланована Вартість) - Автоматизований розрахунок
+   - AC (Фактична Вартість) - Нарахування з урахуванням розкладу
+   - EV (Зароблена Вартість) - Вартість виконаної роботи
+   - Подвійне відмічання часу (createdAt vs effectiveDate)
+   - Машина Часу (Регенератор Снапшотів)
+
+3. **[Ролі та Дозволи](./docs_ukr/03-roles-and-permissions.md)**
+   - Огляд системи RBAC
+   - Список дозволів та правила ієрархії
+   - Модель компенсації на основі ролей
+   - Відстеження історії зарплат
+
+4. **[Задачі та Робочий Процес](./docs_ukr/04-tasks-and-workflow.md)**
+   - Структура Kanban дошки
+   - Розрахунок тривалості задачі (з урахуванням робочого розкладу)
+   - Функціональність відстеження часу
+   - Життєвий цикл задачі
+
+5. **[Схема Бази Даних](./docs_ukr/05-database-schema.md)**
+   - Моделі Project, Task, Transaction
+   - Схеми User, Expense, Snapshot
+   - Зв'язки та індекси
+   - Правила цілісності даних
+
+---
+
+## Project Structure
+
+```
+kbm-logic-v0.1/
+├── client/          # React frontend
+├── server/          # Node.js backend
+├── docs/            # English documentation
+├── docs_ukr/        # Ukrainian documentation
+└── README.md        # This file
 ```
 
-### License
+## License
 
 Private - All rights reserved
+
+---
+
+**Version:** 3.0  
+**Last Updated:** 2024
