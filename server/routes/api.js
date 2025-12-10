@@ -16,6 +16,7 @@ import {
   updateProject,
   regenerateInviteCode,
   deleteProject,
+  recalculateFinancials,
   updateMemberRole,
   getProjectRoles,
   updateRolePermissions,
@@ -88,6 +89,7 @@ router.delete('/projects/:projectId/roles/:roleName', verifyToken, checkDatabase
 router.post('/projects/join', verifyToken, checkDatabaseConnection, validate('joinProject'), joinProject);
 router.put('/projects/:projectId', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_manage_settings'), validate('updateProject'), updateProject);
 router.post('/projects/:projectId/regenerate-invite', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_invite_users'), regenerateInviteCode);
+router.post('/projects/:projectId/recalculate', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_edit_budget'), recalculateFinancials);
 router.delete('/projects/:projectId', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_delete_project'), deleteProject);
 
 // Member role management

@@ -6,6 +6,8 @@ import { sendSuccess, sendError } from '../utils/response.js';
 import logger from '../utils/logger.js';
 import { logDataOperation, ensureProjectInMongo } from '../services/mongoSync.js';
 import { createNotification } from '../services/notificationService.js';
+import { regenerateSnapshotsFromDate } from '../services/evmEngine.js';
+import { normalizeDate } from '../utils/dateUtils.js';
 
 /**
  * Extract unique role definitions from members array
@@ -1547,6 +1549,51 @@ export const deleteProject = async (req, res) => {
   } catch (error) {
     logger.error(`Delete Project Error: ${error.message}`, { error });
     sendError(res, 'Failed to delete project', 500);
+  }
+};
+
+/**
+ * Recalculate financial data (hard reset)
+ * POST /api/projects/:projectId/recalculate
+ * 
+ * Wipes all EVM snapshots and regenerates from project creation date
+ * Requires Owner or can_edit_budget permission
+ */
+export const recalculateFinancials = async (req, res) => {
+  try {
+    const project = req.project;
+    const userId = req.dbUser._id;
+    
+    // Check permissions: Owner or can_edit_budget
+    const isOwner = project.ownerId.toString() === userId.toString();
+    const hasPermission = req.userPermissions?.includes('can_edit_budget');
+    
+    if (!isOwner && !hasPermission) {
+      return sendError(res, 'Access denied: Owner or can_edit_budget permission required', 403);
+    }
+
+    logger.info(`[Recalculate Financials] User ${userId} initiated full recalculation for project ${project._id}`);
+
+    // Step 1: Clear all snapshots and reset cumulative AC
+    project.evmSnapshots = [];
+    project.cumulativeActualCost = 0;
+    await project.save();
+
+    logger.info(`[Recalculate Financials] Cleared all snapshots for project ${project._id}`);
+
+    // Step 2: Regenerate snapshots from project creation date
+    const projectStartDate = normalizeDate(project.createdAt || new Date());
+    await regenerateSnapshotsFromDate(project._id, projectStartDate);
+
+    logger.info(`[Recalculate Financials] Successfully regenerated snapshots from ${projectStartDate.toISOString()} for project ${project._id}`);
+
+    sendSuccess(res, { 
+      message: 'Project financial history regenerated successfully',
+      regeneratedFrom: projectStartDate,
+    });
+  } catch (error) {
+    logger.error(`Recalculate Financials Error: ${error.message}`, { error });
+    sendError(res, 'Failed to recalculate financials', 500);
   }
 };
 

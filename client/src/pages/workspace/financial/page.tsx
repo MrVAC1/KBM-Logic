@@ -250,7 +250,20 @@ export default function FinancialDashboardPage() {
                 <TooltipTrigger asChild>
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Planned Value (PV)</CardTitle>
+                  <div className="flex items-center gap-2">
+                    <CardTitle className="text-sm font-medium">Planned Value (PV)</CardTitle>
+                    <TooltipProvider>
+                      <UITooltip>
+                        <TooltipTrigger asChild>
+                          <Info className="h-3 w-3 text-muted-foreground cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>The estimated cost of work scheduled to be done by now.</p>
+                          <p className="text-xs mt-1">Calculated based on: (Task Working Hours × Role Hourly Rate)</p>
+                        </TooltipContent>
+                      </UITooltip>
+                    </TooltipProvider>
+                  </div>
                   <DollarSign className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
@@ -270,7 +283,20 @@ export default function FinancialDashboardPage() {
                 <TooltipTrigger asChild>
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Actual Cost (AC)</CardTitle>
+                  <div className="flex items-center gap-2">
+                    <CardTitle className="text-sm font-medium">Actual Cost (AC)</CardTitle>
+                    <TooltipProvider>
+                      <UITooltip>
+                        <TooltipTrigger asChild>
+                          <Info className="h-3 w-3 text-muted-foreground cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Total money spent up to this point.</p>
+                          <p className="text-xs mt-1">Includes: (Daily Role Salaries accrued on working days) + (Fixed Costs & Expenses)</p>
+                        </TooltipContent>
+                      </UITooltip>
+                    </TooltipProvider>
+                  </div>
                   <TrendingDown className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
@@ -291,7 +317,21 @@ export default function FinancialDashboardPage() {
                 <TooltipTrigger asChild>
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Earned Value (EV)</CardTitle>
+                  <div className="flex items-center gap-2">
+                    <CardTitle className="text-sm font-medium">Earned Value (EV)</CardTitle>
+                    <TooltipProvider>
+                      <UITooltip>
+                        <TooltipTrigger asChild>
+                          <Info className="h-3 w-3 text-muted-foreground cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>The real value of work actually completed.</p>
+                          <p className="text-xs mt-1">Calculated as: (Task Budget × % Completion)</p>
+                          <p className="text-xs">If you finished 50% of a $100 task, EV is $50</p>
+                        </TooltipContent>
+                      </UITooltip>
+                    </TooltipProvider>
+                  </div>
                   <TrendingUp className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
@@ -320,9 +360,8 @@ export default function FinancialDashboardPage() {
                           <Info className="h-3 w-3 text-muted-foreground cursor-help" />
                         </TooltipTrigger>
                         <TooltipContent>
-                          <p>Difference between Earned Value and Planned Value</p>
-                          <p className="text-xs mt-1">Positive = Ahead of schedule</p>
-                          <p className="text-xs">Negative = Behind schedule</p>
+                          <p>Difference between EV and PV.</p>
+                          <p className="text-xs mt-1">Positive (+) = Ahead of Schedule</p>
                         </TooltipContent>
                       </UITooltip>
                     </TooltipProvider>
@@ -363,9 +402,8 @@ export default function FinancialDashboardPage() {
                           <Info className="h-3 w-3 text-muted-foreground cursor-help" />
                         </TooltipTrigger>
                         <TooltipContent>
-                          <p>Difference between Earned Value and Actual Cost</p>
-                          <p className="text-xs mt-1">Positive = Under budget</p>
-                          <p className="text-xs">Negative = Over budget</p>
+                          <p>Difference between EV and AC.</p>
+                          <p className="text-xs mt-1">Positive (+) = Under Budget (Savings)</p>
                         </TooltipContent>
                       </UITooltip>
                     </TooltipProvider>
@@ -397,7 +435,20 @@ export default function FinancialDashboardPage() {
                 <TooltipTrigger asChild>
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Remaining</CardTitle>
+                  <div className="flex items-center gap-2">
+                    <CardTitle className="text-sm font-medium">Remaining</CardTitle>
+                    <TooltipProvider>
+                      <UITooltip>
+                        <TooltipTrigger asChild>
+                          <Info className="h-3 w-3 text-muted-foreground cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Cash Runway. The real money left on the project accounts.</p>
+                          <p className="text-xs mt-1">Calculated as: (Total Injected Funds/Income) - (Total Actual Cost)</p>
+                        </TooltipContent>
+                      </UITooltip>
+                    </TooltipProvider>
+                  </div>
                   <Calendar className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>

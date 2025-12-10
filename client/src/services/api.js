@@ -114,6 +114,7 @@ export const projects = {
   removeMemberFromDepartment: (projectId, departmentId, memberId) => apiClient.delete(`/projects/${projectId}/departments/${departmentId}/members/${memberId}`),
   update: (projectId, data) => apiClient.put(`/projects/${projectId}`, data),
   regenerateInvite: (projectId) => apiClient.post(`/projects/${projectId}/regenerate-invite`),
+  recalculateFinancials: (projectId) => apiClient.post(`/projects/${projectId}/recalculate`),
   delete: (projectId) => apiClient.delete(`/projects/${projectId}`),
   // Member management
   updateMemberRole: (projectId, memberId, data) => 

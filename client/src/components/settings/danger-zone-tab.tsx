@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { AlertTriangle, Lock, Trash2 } from "lucide-react"
+import { AlertTriangle, Lock, Trash2, RotateCcw } from "lucide-react"
 import { projects as projectsAPI } from "@/services/api"
 import { useProject } from "@/contexts/ProjectContext"
 import { toast } from "sonner"
@@ -27,8 +27,9 @@ interface DangerZoneTabProps {
 
 export function DangerZoneTab({ isOwner }: DangerZoneTabProps) {
   const navigate = useNavigate()
-  const { currentProject } = useProject()
+  const { currentProject, hasPermission } = useProject()
   const projectId = currentProject?.id || currentProject?._id
+  const canEditBudget = hasPermission('can_edit_budget')
   
   const [currentPassword, setCurrentPassword] = useState("")
   const [newPassword, setNewPassword] = useState("")
@@ -36,12 +37,37 @@ export function DangerZoneTab({ isOwner }: DangerZoneTabProps) {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [deleteConfirmation, setDeleteConfirmation] = useState("")
   const [isDeleting, setIsDeleting] = useState(false)
+  const [isRecalculating, setIsRecalculating] = useState(false)
 
   const handleChangePassword = () => {
     console.log("Changing password...")
     setCurrentPassword("")
     setNewPassword("")
     setConfirmPassword("")
+  }
+
+  const handleRecalculateFinancials = async () => {
+    if (!projectId) {
+      toast.error('Project ID not found')
+      return
+    }
+
+    setIsRecalculating(true)
+
+    try {
+      await projectsAPI.recalculateFinancials(projectId)
+      
+      toast.success('Financial data recalculated successfully. Refreshing page...')
+      
+      // Reload the page after a short delay to show updated data
+      setTimeout(() => {
+        window.location.reload()
+      }, 1500)
+    } catch (error: any) {
+      console.error('Failed to recalculate financials:', error)
+      toast.error(error.response?.data?.message || 'Failed to recalculate financials')
+      setIsRecalculating(false)
+    }
   }
 
   const handleDeleteProject = async () => {
@@ -136,6 +162,47 @@ export function DangerZoneTab({ isOwner }: DangerZoneTabProps) {
               <div className="flex items-center gap-2 text-muted-foreground">
                 <Lock className="h-4 w-4" />
                 <p className="text-sm">Only the project owner can change the password</p>
+              </div>
+            </div>
+          )}
+
+          {/* Recalculate Financial Data */}
+          {(isOwner || canEditBudget) ? (
+            <div className="space-y-4 pb-6 border-b border-border">
+              <div className="flex items-start gap-3">
+                <RotateCcw className="h-5 w-5 text-muted-foreground mt-0.5" />
+                <div className="flex-1">
+                  <h4 className="font-medium mb-1">Recalculate Financial Data</h4>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Wipe all existing financial snapshots and regenerate from project creation date. 
+                    Use this if tasks are completed but EV shows $0, or if financial data appears stale. 
+                    This may take 5-10 seconds for large projects.
+                  </p>
+                  <Button
+                    variant="outline"
+                    onClick={handleRecalculateFinancials}
+                    disabled={isRecalculating}
+                  >
+                    {isRecalculating ? (
+                      <>
+                        <RotateCcw className="h-4 w-4 mr-2 animate-spin" />
+                        Recalculating...
+                      </>
+                    ) : (
+                      <>
+                        <RotateCcw className="h-4 w-4 mr-2" />
+                        Recalculate Financial Data
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-border bg-muted/50 p-4 mb-6">
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Lock className="h-4 w-4" />
+                <p className="text-sm">Only the project owner or users with budget edit permissions can recalculate financials</p>
               </div>
             </div>
           )}

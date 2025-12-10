@@ -122,6 +122,7 @@ interface Role {
   color: string
   isOwner?: boolean
   isDefault?: boolean // True for Owner/Guest, false for custom roles
+  currentRate?: number // Monthly salary rate for the role
 }
 
 // Separate RoleCard component with isolated expand/collapse state
@@ -241,7 +242,13 @@ function RoleCard({ role, allPermissions, permissionLabels, updatingPermissions,
                 </div>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
+              {/* Display currentRate if available */}
+              {role.currentRate !== undefined && role.currentRate > 0 && (
+                <span className="text-sm font-medium text-muted-foreground">
+                  ${role.currentRate.toLocaleString(undefined, { maximumFractionDigits: 0 })}/mo
+                </span>
+              )}
               {onEdit && !role.isOwner && (
                 <Button
                   type="button"
@@ -480,6 +487,7 @@ export function RolesTab() {
         color: role.color || '#6b7280',
         isOwner: role.name === 'Owner',
         isDefault: role.isDefault !== undefined ? role.isDefault : (role.name === 'Owner' || role.name === 'Guest'),
+        currentRate: role.currentRate !== undefined ? role.currentRate : 0,
       }))
       
       // Sort by position to ensure correct order

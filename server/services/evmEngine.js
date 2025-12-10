@@ -444,7 +444,15 @@ export async function calculateEV(project, date, startDate = null) {
 
     for (const task of completedTasks) {
       const budget = calculateTaskBudget(project, task, task.updatedAt || date);
-      totalEV += budget.plannedValue;
+      const taskEV = budget.plannedValue;
+      
+      // Debug logging for zero EV cases
+      if (taskEV === 0) {
+        const effectiveRate = budget.avgHourlyRate || 0;
+        logger.warn(`[EVM Warning] Task "${task.title}" (ID: ${task._id}) has 0 EV. Reason: Estimate=${task.estimateHours || 0}, Rate=${effectiveRate}, PlannedValue=${taskEV}`);
+      }
+      
+      totalEV += taskEV;
     }
 
     return totalEV;
