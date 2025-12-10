@@ -197,7 +197,7 @@ function hasPermissionToGrant(userPermissions, permissionsToGrant) {
  */
 export const createProject = async (req, res) => {
   try {
-    const { name, description, password, fixedCosts, importRolesFrom } = req.body;
+    const { name, description, password, fixedCosts, importRolesFrom, workSchedule } = req.body;
     const ownerId = req.dbUser._id;
 
     // Hash password
@@ -244,6 +244,13 @@ export const createProject = async (req, res) => {
       }
     }
 
+    // Prepare baseline role compensation (Owner/Guest) with history for audit
+    const now = new Date();
+    const baselineRoleRates = [
+      { name: 'Owner', currentRate: 0, salaryHistory: [{ rate: 0, effectiveDate: now }] },
+      { name: 'Guest', currentRate: 0, salaryHistory: [{ rate: 0, effectiveDate: now }] },
+    ];
+
     // Create project with owner as first member (with inline role data)
     const project = await Project.create({
       name,
@@ -251,6 +258,8 @@ export const createProject = async (req, res) => {
       passwordHash,
       ownerId,
       fixedCosts: fixedCosts || [],
+      roles: baselineRoleRates,
+      workSchedule: workSchedule || undefined,
       // No roles array - role data is inline in members
       members: [{
         userId: ownerId,
@@ -443,8 +452,7 @@ export const getProjectDetails = async (req, res) => {
       fixedCosts: project.fixedCosts,
       deadline: project.deadline, // Include deadline
       workSchedule: project.workSchedule || {
-        workingDaysPerWeek: 5,
-        daysOffPerWeek: 2,
+        workingDays: [1, 2, 3, 4, 5],
         hoursPerDay: 8,
       },
       roles: extractRoleDefinitions(project.members),
@@ -828,11 +836,10 @@ export const updateProject = async (req, res) => {
         description: project.description,
         fixedCosts: project.fixedCosts,
         deadline: project.deadline,
-        workSchedule: project.workSchedule || {
-          workingDaysPerWeek: 5,
-          daysOffPerWeek: 2,
-          hoursPerDay: 8,
-        },
+      workSchedule: project.workSchedule || {
+        workingDays: [1, 2, 3, 4, 5],
+        hoursPerDay: 8,
+      },
       });
     } catch (saveError) {
       logger.error(`[Deadline Update] Save error:`, {
@@ -983,10 +990,15 @@ export const getProjectRoles = async (req, res) => {
         color = customRole.color || '#6b7280';
       }
       
+      // Get currentRate from project.roles array (roleCompSchema)
+      const roleComp = project.roles?.find(r => r.name === roleName);
+      const currentRate = roleComp?.currentRate ?? 0;
+      
       return {
         name: roleName,
         permissions,
         color,
+        currentRate,
         isOwner: roleName === 'Owner',
         isDefault: roleItem.isDefault,
         // Position in the hierarchy (index-based)
@@ -1114,6 +1126,68 @@ export const updateRolePermissions = async (req, res) => {
   } catch (error) {
     logger.error(`Update Role Permissions Error: ${error.message}`, { error });
     sendError(res, 'Failed to update role permissions', 500);
+  }
+};
+
+/**
+ * Update role currentRate
+ * PUT /api/projects/:projectId/roles/:roleName/rate
+ * 
+ * Updates the currentRate for a role
+ */
+export const updateRoleRate = async (req, res) => {
+  try {
+    const project = req.project;
+    const { roleName } = req.params;
+    const { currentRate } = req.body;
+    const userId = req.dbUser._id;
+    
+    // Permission check is handled by requirePermission('can_manage_roles') middleware
+
+    // Validate currentRate
+    const rate = currentRate !== undefined ? parseFloat(currentRate) : undefined;
+    if (rate === undefined || isNaN(rate) || rate < 0) {
+      return sendError(res, 'Current rate must be a valid non-negative number', 400);
+    }
+
+    // Initialize roles array if it doesn't exist
+    if (!project.roles) {
+      project.roles = [];
+    }
+
+    // Find or create role compensation entry
+    const roleCompIndex = project.roles.findIndex(r => r.name === roleName);
+    const now = new Date();
+    
+    if (roleCompIndex >= 0) {
+      // Update existing role compensation
+      project.roles[roleCompIndex].currentRate = rate;
+      // Add to salary history
+      if (!project.roles[roleCompIndex].salaryHistory) {
+        project.roles[roleCompIndex].salaryHistory = [];
+      }
+      project.roles[roleCompIndex].salaryHistory.push({ rate, effectiveDate: now });
+    } else {
+      // Create new role compensation entry
+      project.roles.push({
+        name: roleName,
+        currentRate: rate,
+        salaryHistory: [{ rate, effectiveDate: now }],
+      });
+    }
+
+    await project.save();
+
+    logger.info(`Role rate updated: User ${userId} updated ${roleName} rate to ${rate} in project ${project._id}`);
+
+    sendSuccess(res, {
+      message: 'Role rate updated successfully',
+      roleName,
+      currentRate: rate,
+    });
+  } catch (error) {
+    logger.error(`Update Role Rate Error: ${error.message}`, { error });
+    sendError(res, 'Failed to update role rate', 500);
   }
 };
 
@@ -1264,7 +1338,7 @@ export const updateRoleOrder = async (req, res) => {
 export const createProjectRole = async (req, res) => {
   try {
     const project = req.project;
-    const { name, color } = req.body;
+    const { name, color, currentRate } = req.body;
     const userId = req.dbUser._id;
     
     // Permission check is handled by requirePermission('can_manage_roles') middleware
@@ -1297,6 +1371,12 @@ export const createProjectRole = async (req, res) => {
     const validColors = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#a855f7', '#6b7280'];
     const selectedColor = color && validColors.includes(color) ? color : '#6b7280';
 
+    // Validate currentRate
+    const rate = currentRate !== undefined ? parseFloat(currentRate) : 0;
+    if (isNaN(rate) || rate < 0) {
+      return sendError(res, 'Current rate must be a valid non-negative number', 400);
+    }
+
     // Create new custom role (position-based: new roles are added to the end of customRoles array)
     // They will be positioned between Owner (index 0) and Guest (last index)
     const newRole = {
@@ -1312,6 +1392,29 @@ export const createProjectRole = async (req, res) => {
     }
 
     project.customRoles.push(newRole);
+    
+    // Initialize roles array if it doesn't exist (for roleCompSchema)
+    if (!project.roles) {
+      project.roles = [];
+    }
+    
+    // Add role compensation entry
+    const now = new Date();
+    const roleComp = {
+      name: roleName,
+      currentRate: rate,
+      salaryHistory: [{ rate, effectiveDate: now }],
+    };
+    
+    // Check if role compensation already exists (shouldn't for new role, but check anyway)
+    const existingRoleCompIndex = project.roles.findIndex(r => r.name === roleName);
+    if (existingRoleCompIndex >= 0) {
+      project.roles[existingRoleCompIndex].currentRate = rate;
+      project.roles[existingRoleCompIndex].salaryHistory.push({ rate, effectiveDate: now });
+    } else {
+      project.roles.push(roleComp);
+    }
+    
     await project.save();
 
     logger.info(`Custom role created: User ${userId} created role "${roleName}" in project ${project._id}`);

@@ -1,10 +1,131 @@
 import Project from '../models/Project.js';
 import Task from '../models/Task.js';
-import User from '../models/User.js';
 import Expense from '../models/Expense.js';
 import Transaction from '../models/Transaction.js';
 import logger from '../utils/logger.js';
 import { normalizeDate, getEndOfDay } from '../utils/dateUtils.js';
+
+const DEFAULT_WORKING_DAYS = [1, 2, 3, 4, 5]; // Mon-Fri
+const WORKING_DAYS_PER_MONTH = 21; // Schedule-aware baseline used for AC/PV accrual
+
+function getWorkingDaySet(workSchedule) {
+  const days = Array.isArray(workSchedule?.workingDays) && workSchedule.workingDays.length > 0
+    ? workSchedule.workingDays
+    : DEFAULT_WORKING_DAYS;
+  return new Set(days);
+}
+
+export function isWorkingDay(date, workSchedule) {
+  const dayOfWeek = normalizeDate(date).getDay(); // 0=Sun..6=Sat
+  return getWorkingDaySet(workSchedule).has(dayOfWeek);
+}
+
+export function countWorkingDaysInclusive(startDate, endDate, workSchedule) {
+  if (!startDate || !endDate) return 0;
+  const start = normalizeDate(startDate);
+  const end = normalizeDate(endDate);
+  if (end.getTime() < start.getTime()) return 0;
+
+  let current = new Date(start);
+  let workingDays = 0;
+  const workingDaySet = getWorkingDaySet(workSchedule);
+
+  while (current.getTime() <= end.getTime()) {
+    if (workingDaySet.has(current.getDay())) {
+      workingDays += 1;
+    }
+    current.setDate(current.getDate() + 1);
+  }
+
+  return workingDays;
+}
+
+function roleMonthlyRateToHourly(monthlyRate, workSchedule) {
+  if (!monthlyRate || monthlyRate <= 0) return 0;
+  const hoursPerDay = workSchedule?.hoursPerDay || 8;
+  const hoursPerMonth = hoursPerDay * WORKING_DAYS_PER_MONTH;
+  return hoursPerMonth > 0 ? monthlyRate / hoursPerMonth : 0;
+}
+
+function resolveMemberRoleName(member) {
+  if (!member) return null;
+  if (member.roleName) return member.roleName;
+  if (Array.isArray(member.roles) && member.roles.length > 0) return member.roles[0];
+  return null;
+}
+
+export function resolveRoleRateForDate(project, roleName, targetDate = new Date()) {
+  if (!roleName) return 0;
+  const role = (project.roles || []).find(r => r.name === roleName);
+  if (!role) return 0;
+
+  const timeline = Array.isArray(role.salaryHistory) ? [...role.salaryHistory] : [];
+  if (role.currentRate !== undefined) {
+    timeline.push({
+      rate: role.currentRate,
+      effectiveDate: role.currentRateEffectiveDate || role.updatedAt || role.createdAt || new Date(),
+    });
+  }
+
+  const sorted = timeline
+    .filter(entry => entry && entry.rate !== undefined)
+    .sort((a, b) => new Date(a.effectiveDate || 0) - new Date(b.effectiveDate || 0));
+
+  let rate = role.currentRate || 0;
+  const normalizedTarget = normalizeDate(targetDate);
+  for (const entry of sorted) {
+    const entryDate = normalizeDate(entry.effectiveDate || new Date(0));
+    if (entryDate.getTime() <= normalizedTarget.getTime()) {
+      rate = entry.rate;
+    }
+  }
+
+  return rate || 0;
+}
+
+function averageHourlyRoleRate(project, assigneeIds, referenceDate) {
+  if (!assigneeIds || assigneeIds.length === 0) return 0;
+  const members = project.members || [];
+  const hourlyRates = [];
+
+  for (const assigneeId of assigneeIds) {
+    const member = members.find(m =>
+      m.userId && (m.userId.toString() === assigneeId.toString() || m.userId._id?.toString() === assigneeId.toString())
+    );
+    const roleName = resolveMemberRoleName(member);
+    if (!roleName) continue;
+
+    const monthlyRate = resolveRoleRateForDate(project, roleName, referenceDate);
+    const hourlyRate = roleMonthlyRateToHourly(monthlyRate, project.workSchedule);
+    if (hourlyRate > 0) {
+      hourlyRates.push(hourlyRate);
+    }
+  }
+
+  if (hourlyRates.length === 0) return 0;
+  return hourlyRates.reduce((sum, rate) => sum + rate, 0) / hourlyRates.length;
+}
+
+function calculateTaskBudget(project, task, referenceDate = new Date()) {
+  const hoursPerDay = project.workSchedule?.hoursPerDay || 8;
+  const startDate = task.startDate ? normalizeDate(task.startDate) : null;
+  const deadline = task.deadline ? normalizeDate(task.deadline) : null;
+
+  const durationHours = (startDate && deadline)
+    ? countWorkingDaysInclusive(startDate, deadline, project.workSchedule) * hoursPerDay
+    : (task.estimateHours || 0);
+
+  const avgHourlyRate = averageHourlyRoleRate(project, task.assignees || [], referenceDate || deadline || startDate || new Date());
+  const plannedValue = durationHours * avgHourlyRate;
+
+  return {
+    plannedValue,
+    durationHours,
+    avgHourlyRate,
+    startDate,
+    deadline,
+  };
+}
 
 /**
  * Get the effective deadline for a project
@@ -69,23 +190,16 @@ export function calculateDailyRate(monthlySalary, workSchedule) {
     return 0;
   }
 
-  // Default work schedule if not provided or invalid
-  const workingDaysPerWeek = (workSchedule && typeof workSchedule.workingDaysPerWeek === 'number') 
-    ? workSchedule.workingDaysPerWeek 
+  const workingDaysCount = Array.isArray(workSchedule?.workingDays) && workSchedule.workingDays.length > 0
+    ? workSchedule.workingDays.length
     : 5;
-  const daysOffPerWeek = (workSchedule && typeof workSchedule.daysOffPerWeek === 'number')
-    ? workSchedule.daysOffPerWeek
-    : 2;
-  const hoursPerDay = (workSchedule && typeof workSchedule.hoursPerDay === 'number')
-    ? workSchedule.hoursPerDay
-    : 8;
 
-  // Calculate working days per month (approx)
-  // Average working days per month = (workingDaysPerWeek / 7) * 30.44
-  const workingDaysPerMonth = (workingDaysPerWeek / 7) * 30.44;
+  // Approximate working days per month based on schedule (fallback to 21)
+  const workingDaysPerMonth = workingDaysCount > 0
+    ? (workingDaysCount / 7) * 30.44
+    : WORKING_DAYS_PER_MONTH;
 
-  // Daily rate = Monthly Salary / Working Days per Month
-  return monthlySalary / workingDaysPerMonth;
+  return workingDaysPerMonth > 0 ? monthlySalary / workingDaysPerMonth : 0;
 }
 
 /**
@@ -99,20 +213,16 @@ export function calculateHourlyRate(monthlySalary, workSchedule) {
     return 0;
   }
 
-  // Default work schedule if not provided or invalid
-  const workingDaysPerWeek = (workSchedule && typeof workSchedule.workingDaysPerWeek === 'number')
-    ? workSchedule.workingDaysPerWeek
+  const workingDaysCount = Array.isArray(workSchedule?.workingDays) && workSchedule.workingDays.length > 0
+    ? workSchedule.workingDays.length
     : 5;
   const hoursPerDay = (workSchedule && typeof workSchedule.hoursPerDay === 'number')
     ? workSchedule.hoursPerDay
     : 8;
 
-  // Calculate working hours per month using formula: (workingDaysPerWeek * 4.33) * hoursPerDay
-  // 4.33 represents average weeks per month (30.44 days / 7 days per week)
-  const workingHoursPerMonth = (workingDaysPerWeek * 4.33) * hoursPerDay;
-
-  // Hourly rate = Monthly Salary / Working Hours per Month
-  return monthlySalary / workingHoursPerMonth;
+  // Approximate working hours per month
+  const workingHoursPerMonth = (workingDaysCount / 7) * 30.44 * hoursPerDay;
+  return workingHoursPerMonth > 0 ? monthlySalary / workingHoursPerMonth : 0;
 }
 
 /**
@@ -149,9 +259,7 @@ export async function calculatePV(project, date, startDate = null) {
     logger.debug(`[PV Cache Miss] Calculating PV for ${targetDate.toISOString()}`);
     
     const projectId = project._id || project.id;
-    const tasks = await Task.find({ projectId })
-      .populate('assignees', 'monthlySalary')
-      .lean();
+    const tasks = await Task.find({ projectId }).lean();
 
     let totalPV = 0;
 
@@ -166,86 +274,33 @@ export async function calculatePV(project, date, startDate = null) {
     const periodStartDate = startDate ? normalizeDate(startDate) : null;
 
     for (const task of tasks) {
-      // Skip tasks without estimateHours
-      if (!task.estimateHours || task.estimateHours === 0) {
-        continue;
-      }
-
-      // Use project deadline as fallback if task doesn't have a deadline
-      // If no project deadline, use effective deadline (latest task or default)
-      let taskDeadline = null;
-      if (task.deadline) {
-        taskDeadline = normalizeDate(task.deadline);
-      } else if (projectDeadline) {
-        taskDeadline = projectDeadline;
-      } else {
-        // Use effective deadline (latest task deadline or default)
-        taskDeadline = effectiveDeadline;
-      }
-
-      // Use project start date as fallback if task doesn't have startDate
-      let taskStartDate = null;
-      if (task.startDate) {
-        taskStartDate = normalizeDate(task.startDate);
-      } else {
-        taskStartDate = projectStartDate;
-      }
-
-      // If periodStartDate is provided, skip tasks that start before the period
-      if (periodStartDate && taskStartDate.getTime() < periodStartDate.getTime()) {
-        // Task started before period, but might have work during the period
-        // Only include if task deadline is within the period
-        if (taskDeadline.getTime() < periodStartDate.getTime()) {
-          continue; // Task completed before period, skip entirely
-        }
-        // Task started before period but extends into period - adjust startDate to periodStartDate
-        taskStartDate = periodStartDate;
-      }
-
-      const startDate = taskStartDate;
-      const deadline = taskDeadline;
-      // Use end of day to include all work scheduled for the target date
+      const budget = calculateTaskBudget(project, task, date);
       const targetDate = getEndOfDay(date);
 
-      // Skip if date is before task starts (compare with start of day for task start)
-      if (targetDate.getTime() < startDate.getTime()) {
+      const taskDeadline = task.deadline ? normalizeDate(task.deadline) : (projectDeadline || effectiveDeadline);
+      const taskStartDate = task.startDate ? normalizeDate(task.startDate) : projectStartDate;
+
+      // If periodStartDate is provided, adjust taskStartDate to the period window
+      const adjustedStart = (periodStartDate && taskStartDate.getTime() < periodStartDate.getTime())
+        ? periodStartDate
+        : taskStartDate;
+
+      // Skip if task finishes before period starts
+      if (periodStartDate && taskDeadline.getTime() < periodStartDate.getTime()) {
         continue;
       }
 
-      // Calculate task budget based on assignees
-      let taskBudget = 0;
-      
-      if (task.assignees && task.assignees.length > 0) {
-        // Calculate average hourly rate from assignees
-        let totalHourlyRate = 0;
-        let assigneesCount = 0;
-
-        for (const assignee of task.assignees) {
-          const user = assignee;
-          if (user && user.monthlySalary && user.monthlySalary > 0) {
-            const hourlyRate = calculateHourlyRate(user.monthlySalary, project.workSchedule);
-            totalHourlyRate += hourlyRate;
-            assigneesCount++;
-          }
-        }
-
-        if (assigneesCount > 0) {
-          const averageHourlyRate = totalHourlyRate / assigneesCount;
-          taskBudget = task.estimateHours * averageHourlyRate;
-        }
+      // Skip if target date is before task starts
+      if (targetDate.getTime() < adjustedStart.getTime()) {
+        continue;
       }
 
-      // If task is fully completed by this date, add full budget
-      if (targetDate.getTime() >= deadline.getTime()) {
-        totalPV += taskBudget;
-      } else {
-        // Calculate linear daily portion (using normalized dates)
-        const taskDuration = Math.max(1, Math.ceil((deadline.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))); // Days
-        const daysSinceStart = Math.max(0, Math.ceil((targetDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))); // Days
-        const dailyPortion = taskBudget / taskDuration;
-        const partialPV = Math.min(taskBudget, dailyPortion * daysSinceStart);
-        totalPV += partialPV;
-      }
+      // If task has no workable duration, use full budget
+      const totalWorkingDays = Math.max(1, countWorkingDaysInclusive(adjustedStart, taskDeadline, project.workSchedule));
+      const workedDaysUntilTarget = countWorkingDaysInclusive(adjustedStart, targetDate < taskDeadline ? targetDate : taskDeadline, project.workSchedule);
+      const completionRatio = Math.min(1, workedDaysUntilTarget / totalWorkingDays);
+
+      totalPV += budget.plannedValue * completionRatio;
     }
 
     return totalPV;
@@ -308,42 +363,13 @@ export async function calculateEV(project, date, startDate = null) {
     }
     
     // Get all completed tasks that match the filter
-    const completedTasks = await Task.find(queryFilter)
-      .populate('assignees', 'monthlySalary')
-      .lean();
+    const completedTasks = await Task.find(queryFilter).lean();
 
     let totalEV = 0;
 
     for (const task of completedTasks) {
-      // Skip tasks without estimateHours
-      if (!task.estimateHours || task.estimateHours === 0) {
-        continue;
-      }
-
-      // Calculate task budget based on assignees
-      let taskBudget = 0;
-      
-      if (task.assignees && task.assignees.length > 0) {
-        // Calculate average hourly rate from assignees
-        let totalHourlyRate = 0;
-        let assigneesCount = 0;
-
-        for (const assignee of task.assignees) {
-          const user = assignee;
-          if (user && user.monthlySalary && user.monthlySalary > 0) {
-            const hourlyRate = calculateHourlyRate(user.monthlySalary, project.workSchedule);
-            totalHourlyRate += hourlyRate;
-            assigneesCount++;
-          }
-        }
-
-        if (assigneesCount > 0) {
-          const averageHourlyRate = totalHourlyRate / assigneesCount;
-          taskBudget = task.estimateHours * averageHourlyRate;
-        }
-      }
-
-      totalEV += taskBudget;
+      const budget = calculateTaskBudget(project, task, task.updatedAt || date);
+      totalEV += budget.plannedValue;
     }
 
     return totalEV;
@@ -458,23 +484,65 @@ export async function calculateAC(project, date, startDate = null) {
     // Calculate daily costs from salaries and expenses
     let totalAC = 0;
 
-    // Get all active members with salaries
+    // Get all active members with role-based rates (schedule-aware)
     const activeMembers = project.members || [];
-    
+    const normalizedTargetDay = normalizeDate(targetDate);
+
     for (const member of activeMembers) {
-      const user = await User.findById(member.userId);
-      if (user && user.monthlySalary && user.monthlySalary > 0) {
-        const dailyRate = calculateDailyRate(user.monthlySalary, project.workSchedule);
-        
-        // Calculate days from calculation start date to target date
-        // If periodStartDate is provided, only count days within the period
-        const memberStartDate = normalizeDate(member.joinedAt || projectStartDate);
-        const effectiveStartDate = periodStartDate && periodStartDate.getTime() > memberStartDate.getTime() 
-          ? periodStartDate 
-          : memberStartDate;
-        
-        const daysSinceStart = Math.max(0, Math.ceil((targetDate.getTime() - effectiveStartDate.getTime()) / (1000 * 60 * 60 * 24)));
-        totalAC += dailyRate * daysSinceStart;
+      const roleName = resolveMemberRoleName(member);
+      if (!roleName) {
+        continue;
+      }
+
+      const role = (project.roles || []).find(r => r.name === roleName);
+      if (!role) {
+        continue;
+      }
+
+      const memberStartDate = normalizeDate(member.joinedAt || projectStartDate);
+      const effectiveStartDate = periodStartDate && periodStartDate.getTime() > memberStartDate.getTime()
+        ? periodStartDate
+        : memberStartDate;
+
+      if (effectiveStartDate.getTime() > normalizedTargetDay.getTime()) {
+        continue;
+      }
+
+      const timeline = Array.isArray(role.salaryHistory) ? [...role.salaryHistory] : [];
+      if (role.currentRate !== undefined) {
+        timeline.push({
+          rate: role.currentRate,
+          effectiveDate: role.currentRateEffectiveDate || role.updatedAt || role.createdAt || new Date(),
+        });
+      }
+
+      const sortedTimeline = timeline
+        .filter(entry => entry && entry.rate !== undefined)
+        .sort((a, b) => new Date(a.effectiveDate || 0) - new Date(b.effectiveDate || 0));
+
+      for (let i = 0; i < sortedTimeline.length; i++) {
+        const entry = sortedTimeline[i];
+        const entryStart = normalizeDate(entry.effectiveDate || projectStartDate);
+        const nextEntry = sortedTimeline[i + 1];
+        // End date is the day before the next entry starts, or the target date
+        const entryEnd = nextEntry
+          ? normalizeDate(nextEntry.effectiveDate || normalizedTargetDay)
+          : normalizedTargetDay;
+        const inclusiveEnd = entryEnd.getTime() > normalizedTargetDay.getTime()
+          ? normalizedTargetDay
+          : new Date(entryEnd.getTime() - 1);
+
+        const windowStart = entryStart.getTime() < effectiveStartDate.getTime()
+          ? effectiveStartDate
+          : entryStart;
+
+        if (windowStart.getTime() > normalizedTargetDay.getTime() || inclusiveEnd.getTime() < windowStart.getTime()) {
+          continue;
+        }
+
+        const workingDays = countWorkingDaysInclusive(windowStart, inclusiveEnd, project.workSchedule);
+        const dailyRate = (entry.rate || 0) / WORKING_DAYS_PER_MONTH;
+        totalAC += workingDays * dailyRate;
       }
     }
 
@@ -568,13 +636,16 @@ export async function calculateAC(project, date, startDate = null) {
     const transactions = await Transaction.find({
       projectId,
       type: '-', // Only expenses increase AC
-      date: { $lte: targetDate }, // Transaction date must be <= target date
+      $or: [
+        { effectiveDate: { $lte: targetDate } },
+        { effectiveDate: { $exists: false }, date: { $lte: targetDate } },
+      ],
     }).lean();
 
     // If periodStartDate is provided, only include transactions on or after the period start
     if (periodStartDate) {
       for (const transaction of transactions) {
-        const transactionDate = normalizeDate(transaction.date);
+        const transactionDate = normalizeDate(transaction.effectiveDate || transaction.date);
         if (transactionDate.getTime() >= periodStartDate.getTime()) {
           totalAC += transaction.amount || 0;
         }
@@ -612,18 +683,23 @@ export async function calculateDailyActualCost(projectId, date = new Date()) {
     targetDate.setHours(0, 0, 0, 0);
 
     let dailyCost = 0;
+    const isWorkDayFlag = isWorkingDay(targetDate, project.workSchedule);
 
-    // Calculate daily salary costs from active members
-    const activeMembers = project.members || [];
-    for (const member of activeMembers) {
-      const user = await User.findById(member.userId);
-      if (user && user.monthlySalary && user.monthlySalary > 0) {
-        const dailyRate = calculateDailyRate(user.monthlySalary, project.workSchedule);
-        dailyCost += dailyRate;
+    // Calculate daily salary costs from active members (only on working days)
+    if (isWorkDayFlag) {
+      const activeMembers = project.members || [];
+      for (const member of activeMembers) {
+        const roleName = resolveMemberRoleName(member);
+        if (!roleName) continue;
+        const monthlyRate = resolveRoleRateForDate(project, roleName, targetDate);
+        const dailyRate = monthlyRate / WORKING_DAYS_PER_MONTH;
+        if (dailyRate > 0) {
+          dailyCost += dailyRate;
+        }
       }
     }
 
-    // Calculate daily expenses (convert all to daily equivalent) from Expense collection
+    // Daily expenses (frequency-based) from Expense collection
     const expenses = await Expense.find({ projectId }).lean();
     for (const expense of expenses) {
       const expenseStartDate = new Date(expense.createdAt);
@@ -674,7 +750,6 @@ export async function calculateDailyActualCost(projectId, date = new Date()) {
               break;
             case 'one-time':
               // One-time costs are not included in daily calculation
-              // They are applied once when the project starts
               dailyFixedCostAmount = 0;
               break;
             default:
@@ -683,6 +758,21 @@ export async function calculateDailyActualCost(projectId, date = new Date()) {
           dailyCost += dailyFixedCostAmount;
         }
       }
+    }
+
+    // Add negative transactions effective on this date
+    const dayStart = normalizeDate(targetDate);
+    const dayEnd = getEndOfDay(targetDate);
+    const dayTransactions = await Transaction.find({
+      projectId,
+      type: '-',
+      $or: [
+        { effectiveDate: { $gte: dayStart, $lte: dayEnd } },
+        { effectiveDate: { $exists: false }, date: { $gte: dayStart, $lte: dayEnd } },
+      ],
+    }).lean();
+    for (const txn of dayTransactions) {
+      dailyCost += txn.amount || 0;
     }
 
     // Initialize evmSnapshots if not exists
@@ -744,6 +834,47 @@ export async function calculateDailyActualCost(projectId, date = new Date()) {
   } catch (error) {
     logger.error(`Calculate Daily AC Error: ${error.message}`, { error });
     throw error;
+  }
+}
+
+/**
+ * Regenerate EVM snapshots starting from a specific date (inclusive)
+ * Used when historical data changes (e.g., retroactive transactions)
+ * @param {String} projectId - Project ID
+ * @param {Date} startDate - Date to start regeneration from
+ */
+export async function regenerateSnapshotsFromDate(projectId, startDate = new Date()) {
+  const project = await Project.findById(projectId);
+  if (!project) {
+    throw new Error('Project not found');
+  }
+
+  const start = normalizeDate(startDate);
+  const today = normalizeDate(new Date());
+
+  // Keep snapshots before the start date to preserve history
+  const preservedSnapshots = (project.evmSnapshots || []).filter(s => {
+    try {
+      const snapshotDate = normalizeDate(s.date);
+      return snapshotDate.getTime() < start.getTime();
+    } catch (error) {
+      return false;
+    }
+  });
+
+  const baselineAC = preservedSnapshots.length > 0
+    ? preservedSnapshots[preservedSnapshots.length - 1].actualCost || 0
+    : 0;
+
+  project.evmSnapshots = preservedSnapshots;
+  project.cumulativeActualCost = baselineAC;
+  await project.save();
+
+  // Recompute snapshots from start date through today
+  const cursor = new Date(start);
+  while (cursor.getTime() <= today.getTime()) {
+    await calculateDailyActualCost(projectId, new Date(cursor));
+    cursor.setDate(cursor.getDate() + 1);
   }
 }
 

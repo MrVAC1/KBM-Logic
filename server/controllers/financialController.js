@@ -1,7 +1,7 @@
 import Transaction from '../models/Transaction.js';
 import Task from '../models/Task.js';
 import Project from '../models/Project.js';
-import { calculatePV, calculateEV, calculateAC } from '../services/evmEngine.js';
+import { calculatePV, calculateEV, calculateAC, regenerateSnapshotsFromDate } from '../services/evmEngine.js';
 import { sendSuccess, sendError } from '../utils/response.js';
 import logger from '../utils/logger.js';
 import { logDataOperation, ensureTransactionInMongo } from '../services/mongoSync.js';
@@ -410,15 +410,17 @@ export const getDashboardStats = async (req, res) => {
 export const createTransaction = async (req, res) => {
   try {
     const { projectId } = req.params;
-    const { amount, type, source, date, description } = req.body;
+    const { amount, type, source, date, effectiveDate, description } = req.body;
     const authorId = req.dbUser._id;
+    const effective = effectiveDate || date || new Date();
 
     const transaction = await Transaction.create({
       projectId,
       amount,
       type,
       source,
-      date: date || new Date(),
+      date: effective || new Date(),
+      effectiveDate: effective,
       description,
       authorId,
     });
@@ -433,6 +435,17 @@ export const createTransaction = async (req, res) => {
       type,
       source,
     });
+
+    // If transaction impacts a past period, regenerate snapshots from that effective date
+    const today = normalizeDate(new Date());
+    const effectiveNormalized = normalizeDate(effective);
+    if (effectiveNormalized.getTime() < today.getTime()) {
+      try {
+        await regenerateSnapshotsFromDate(projectId, effectiveNormalized);
+      } catch (regenError) {
+        logger.warn(`Snapshot regeneration failed for project ${projectId} from ${effectiveNormalized.toISOString()}: ${regenError.message}`);
+      }
+    }
 
     sendSuccess(res, {
       ...populatedTransaction.toObject(),
@@ -454,7 +467,7 @@ export const getTransactions = async (req, res) => {
 
     const transactions = await Transaction.find({ projectId })
       .populate('authorId', 'displayName email')
-      .sort({ date: -1 });
+      .sort({ effectiveDate: -1, createdAt: -1 });
 
     sendSuccess(res, transactions);
   } catch (error) {

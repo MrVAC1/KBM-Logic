@@ -27,9 +27,8 @@ export function ManageFundsModal({ open, onOpenChange, onTransactionCreated, pro
   const [amount, setAmount] = useState("")
   const [source, setSource] = useState("")
   const [reason, setReason] = useState("")
+  const [effectiveDate, setEffectiveDate] = useState<string>(new Date().toISOString().slice(0, 10))
   const [isSubmitting, setIsSubmitting] = useState(false)
-
-  const today = new Date()
 
   const handleSubmit = async () => {
     // Validation
@@ -62,7 +61,7 @@ export function ManageFundsModal({ open, onOpenChange, onTransactionCreated, pro
         amount: amountNum,
         type: type === "income" ? "+" : "-",
         source: source.trim(),
-        date: today.toISOString(),
+        effectiveDate: effectiveDate ? new Date(effectiveDate).toISOString() : new Date().toISOString(),
         description: reason.trim(),
       }
 
@@ -156,20 +155,18 @@ export function ManageFundsModal({ open, onOpenChange, onTransactionCreated, pro
             />
           </div>
 
-          {/* Date field - READ ONLY */}
+          {/* Effective Date (retroactive allowed) */}
           <div className="space-y-2">
-            <Label htmlFor="date">Date</Label>
-            <Input 
-              id="date" 
-              value={today.toLocaleDateString("en-US", {
-                year: "numeric",
-                month: "long",
-                day: "numeric",
-              })} 
-              disabled 
-              className="bg-muted text-muted-foreground cursor-not-allowed" 
+            <Label htmlFor="effective-date">Effective Date</Label>
+            <Input
+              id="effective-date"
+              type="date"
+              value={effectiveDate}
+              onChange={(e) => setEffectiveDate(e.target.value)}
             />
-            <p className="text-xs text-muted-foreground">Date is automatically set to today</p>
+            <p className="text-xs text-muted-foreground">
+              You can log past transactions. Stored as the transaction's effective date.
+            </p>
           </div>
         </div>
 

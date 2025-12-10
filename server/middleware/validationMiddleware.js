@@ -6,6 +6,10 @@ const schemas = {
     name: Joi.string().trim().required().min(1).max(100),
     description: Joi.string().trim().allow('').max(500),
     password: Joi.string().min(6).required(),
+    workSchedule: Joi.object({
+      workingDays: Joi.array().items(Joi.number().integer().min(0).max(6)).default([1, 2, 3, 4, 5]),
+      hoursPerDay: Joi.number().min(1).max(24).default(8),
+    }),
     fixedCosts: Joi.array().items(
       Joi.object({
         title: Joi.string().required(),
@@ -19,6 +23,10 @@ const schemas = {
   updateProject: Joi.object({
     name: Joi.string().trim().min(1).max(100),
     description: Joi.string().trim().allow('').max(500),
+    workSchedule: Joi.object({
+      workingDays: Joi.array().items(Joi.number().integer().min(0).max(6)),
+      hoursPerDay: Joi.number().min(1).max(24),
+    }),
     fixedCosts: Joi.array().items(
       Joi.object({
         title: Joi.string().required(),
@@ -28,11 +36,6 @@ const schemas = {
       })
     ),
     deadline: Joi.date().allow(null),
-    workSchedule: Joi.object({
-      workingDaysPerWeek: Joi.number().min(1).max(7),
-      daysOffPerWeek: Joi.number().min(0).max(6),
-      hoursPerDay: Joi.number().min(1).max(24),
-    }),
   }).min(1),
 
   createTask: Joi.object({
@@ -45,8 +48,6 @@ const schemas = {
     startDate: Joi.date().allow(null),
     deadline: Joi.date().allow(null),
     estimateHours: Joi.number().min(0).required(),
-    plannedCost: Joi.number().min(0),
-    plannedValue: Joi.number().min(0).default(0),
     risk: Joi.object({
       probability: Joi.number().min(1).max(5).default(1),
       impact: Joi.number().min(1).max(5).default(1),
@@ -63,7 +64,6 @@ const schemas = {
     startDate: Joi.date().allow(null),
     deadline: Joi.date().allow(null),
     estimateHours: Joi.number().min(0),
-    plannedValue: Joi.number().min(0),
     risk: Joi.object({
       probability: Joi.number().min(1).max(5),
       impact: Joi.number().min(1).max(5),
@@ -75,6 +75,7 @@ const schemas = {
     type: Joi.string().valid('+', '-').required(),
     source: Joi.string().trim().required().min(1).max(100),
     date: Joi.date().default(() => new Date()),
+    effectiveDate: Joi.date().default(() => new Date()),
     description: Joi.string().trim().allow('').max(500),
   }),
 

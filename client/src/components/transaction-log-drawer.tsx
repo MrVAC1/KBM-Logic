@@ -21,6 +21,8 @@ interface Transaction {
   type: '+' | '-'
   source: string
   date: string
+  effectiveDate?: string
+  createdAt?: string
   description?: string
   authorId?: {
     _id: string
@@ -119,17 +121,45 @@ export function TransactionLogDrawer({ open, onOpenChange, projectId, refreshTri
                             </p>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2 mt-2">
+                        <div className="flex items-center gap-2 mt-2 flex-wrap">
                           <Badge variant="outline" className="text-xs">
                             {isIncome ? "Income" : "Expense"}
                           </Badge>
-                          <span className="text-xs text-muted-foreground">
-                            {new Date(transaction.date).toLocaleDateString("en-US", {
-                              year: "numeric",
-                              month: "short",
-                              day: "numeric",
-                            })}
-                          </span>
+                          {transaction.createdAt && (
+                            <div className="flex items-center gap-1">
+                              <span className="text-xs font-medium text-muted-foreground">Created At:</span>
+                              <span className="text-xs text-muted-foreground">
+                                {new Date(transaction.createdAt).toLocaleDateString("en-US", {
+                                  year: "numeric",
+                                  month: "short",
+                                  day: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
+                              </span>
+                            </div>
+                          )}
+                          {transaction.effectiveDate && (
+                            <div className="flex items-center gap-1">
+                              <span className="text-xs font-medium text-muted-foreground">Effective Date:</span>
+                              <span className="text-xs text-muted-foreground">
+                                {new Date(transaction.effectiveDate).toLocaleDateString("en-US", {
+                                  year: "numeric",
+                                  month: "short",
+                                  day: "numeric",
+                                })}
+                              </span>
+                            </div>
+                          )}
+                          {!transaction.createdAt && !transaction.effectiveDate && transaction.date && (
+                            <span className="text-xs text-muted-foreground">
+                              {new Date(transaction.date).toLocaleDateString("en-US", {
+                                year: "numeric",
+                                month: "short",
+                                day: "numeric",
+                              })}
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>

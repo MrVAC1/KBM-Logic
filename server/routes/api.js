@@ -20,6 +20,7 @@ import {
   getProjectRoles,
   updateRolePermissions,
   updateRoleOrder,
+  updateRoleRate,
   createProjectRole,
   deleteProjectRole,
   getProjectMembers,
@@ -81,6 +82,7 @@ router.post('/projects/:projectId/roles', verifyToken, checkDatabaseConnection, 
 // IMPORTANT: /roles/order must come BEFORE /roles/:roleName to avoid route collision
 // Express matches routes sequentially, so static paths must come before dynamic parameters
 router.put('/projects/:projectId/roles/order', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_manage_roles'), updateRoleOrder);
+router.put('/projects/:projectId/roles/:roleName/rate', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_manage_roles'), updateRoleRate);
 router.put('/projects/:projectId/roles/:roleName', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_manage_roles'), updateRolePermissions);
 router.delete('/projects/:projectId/roles/:roleName', verifyToken, checkDatabaseConnection, checkProjectMember, requirePermission('can_manage_roles'), deleteProjectRole);
 router.post('/projects/join', verifyToken, checkDatabaseConnection, validate('joinProject'), joinProject);

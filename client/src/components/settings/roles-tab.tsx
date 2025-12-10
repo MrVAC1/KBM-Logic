@@ -28,7 +28,7 @@ import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { Shield, Lock, ChevronDown, ChevronUp, GripVertical, Trash2, Plus } from "lucide-react"
+import { Shield, Lock, ChevronDown, ChevronUp, GripVertical, Trash2, Plus, Edit2 } from "lucide-react"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { CreateRoleModal } from "./create-role-modal"
 import { projects as projectsAPI } from "@/services/api"
@@ -132,13 +132,14 @@ interface RoleCardProps {
   updatingPermissions: Set<string>
   onPermissionToggle: (roleName: string, permissionId: string, newValue: boolean) => void
   onDelete?: (roleName: string) => void
+  onEdit?: (role: Role) => void
   isDraggable?: boolean
   userPermissions?: string[]
   isOwner?: boolean
   isDeleting?: boolean
 }
 
-function RoleCard({ role, allPermissions, permissionLabels, updatingPermissions, onPermissionToggle, onDelete, isDraggable = false, userPermissions = [], isOwner = false, isDeleting = false }: RoleCardProps) {
+function RoleCard({ role, allPermissions, permissionLabels, updatingPermissions, onPermissionToggle, onDelete, onEdit, isDraggable = false, userPermissions = [], isOwner = false, isDeleting = false }: RoleCardProps) {
   const [isExpanded, setIsExpanded] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
 
@@ -240,20 +241,39 @@ function RoleCard({ role, allPermissions, permissionLabels, updatingPermissions,
                 </div>
               </div>
             </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={handleToggleExpand}
-              aria-expanded={isExpanded}
-              aria-label={isExpanded ? `Collapse ${role.name} permissions` : `Expand ${role.name} permissions`}
-            >
-              {isExpanded ? (
-                <ChevronUp className="h-4 w-4" />
-              ) : (
-                <ChevronDown className="h-4 w-4" />
+            <div className="flex items-center gap-2">
+              {onEdit && !role.isOwner && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    if (onEdit) {
+                      onEdit(role)
+                    }
+                  }}
+                  aria-label={`Edit ${role.name} rate`}
+                >
+                  <Edit2 className="h-4 w-4" />
+                </Button>
               )}
-            </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={handleToggleExpand}
+                aria-expanded={isExpanded}
+                aria-label={isExpanded ? `Collapse ${role.name} permissions` : `Expand ${role.name} permissions`}
+              >
+                {isExpanded ? (
+                  <ChevronUp className="h-4 w-4" />
+                ) : (
+                  <ChevronDown className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
           </div>
 
           {/* Permissions (Expanded) */}
@@ -417,6 +437,7 @@ export function RolesTab() {
   const [updatingPermissions, setUpdatingPermissions] = useState<Set<string>>(new Set())
   const [isReordering, setIsReordering] = useState(false)
   const [showCreateModal, setShowCreateModal] = useState(false)
+  const [editingRole, setEditingRole] = useState<Role | null>(null)
   const [deletingRole, setDeletingRole] = useState<string | null>(null)
   const [activeId, setActiveId] = useState<string | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -643,6 +664,28 @@ export function RolesTab() {
     }
   }
 
+  // Handle role edit
+  const handleEditRole = (role: Role) => {
+    setEditingRole(role)
+  }
+
+  const handleUpdateRoleRate = async (roleName: string, currentRate: number) => {
+    if (!projectId) {
+      toast.error('Project ID not found')
+      return
+    }
+
+    try {
+      await projectsAPI.updateRoleRate(projectId, roleName, currentRate)
+      toast.success(`Role "${roleName}" rate updated successfully`)
+      setEditingRole(null)
+      await fetchRoles()
+    } catch (error: any) {
+      console.error('Failed to update role rate:', error)
+      toast.error(error.response?.data?.message || 'Failed to update role rate')
+    }
+  }
+
   // Handle role deletion
   const handleDeleteRole = async (roleName: string) => {
     if (!projectId) {
@@ -746,6 +789,19 @@ export function RolesTab() {
         onSuccess={fetchRoles}
         projectId={projectId || ''}
       />
+      {editingRole && (
+        <CreateRoleModal
+          open={!!editingRole}
+          onOpenChange={(open) => !open && setEditingRole(null)}
+          onSuccess={async () => {
+            setEditingRole(null)
+            await fetchRoles()
+          }}
+          projectId={projectId || ''}
+          editingRole={editingRole}
+          onUpdateRate={handleUpdateRoleRate}
+        />
+      )}
       
       <Card>
         <CardHeader>
@@ -784,6 +840,7 @@ export function RolesTab() {
                   updatingPermissions={updatingPermissions}
                   onPermissionToggle={handlePermissionToggle}
                   onDelete={canManageRoles ? handleDeleteRole : undefined}
+                  onEdit={canManageRoles ? handleEditRole : undefined}
                   isDraggable={false}
                   userPermissions={userPermissions}
                   isOwner={isOwner || false}
@@ -805,6 +862,7 @@ export function RolesTab() {
                     updatingPermissions={updatingPermissions}
                     onPermissionToggle={handlePermissionToggle}
                     onDelete={canManageRoles ? handleDeleteRole : undefined}
+                    onEdit={canManageRoles ? handleEditRole : undefined}
                     isDraggable={true}
                     userPermissions={userPermissions}
                     isOwner={isOwner || false}
@@ -823,6 +881,7 @@ export function RolesTab() {
                   updatingPermissions={updatingPermissions}
                   onPermissionToggle={handlePermissionToggle}
                   onDelete={canManageRoles ? handleDeleteRole : undefined}
+                  onEdit={canManageRoles ? handleEditRole : undefined}
                   isDraggable={false}
                   userPermissions={userPermissions}
                   isOwner={isOwner || false}

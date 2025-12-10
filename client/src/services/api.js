@@ -88,9 +88,12 @@ export const projects = {
   create: (data) => apiClient.post('/projects', data),
   getAll: () => apiClient.get('/projects'),
   getById: (projectId) => apiClient.get(`/projects/${projectId}`),
+  getActivity: (projectId) => apiClient.get(`/projects/${projectId}/activity`),
   getRoles: (projectId) => apiClient.get(`/projects/${projectId}/roles`),
   updateRolePermissions: (projectId, roleName, permissions) => 
     apiClient.put(`/projects/${projectId}/roles/${roleName}`, { permissions }),
+  updateRoleRate: (projectId, roleName, currentRate) => 
+    apiClient.put(`/projects/${projectId}/roles/${roleName}/rate`, { currentRate }),
   updateRoleOrder: (projectId, roleOrder) => 
     apiClient.put(`/projects/${projectId}/roles/order`, { roleOrder }),
   createRole: (projectId, data) => 

@@ -7,7 +7,6 @@ import { Area, Line, ComposedChart, XAxis, YAxis, CartesianGrid, Tooltip, Respon
 import { financials as financialsAPI } from "@/services/api"
 import { useProject } from "@/contexts/ProjectContext"
 import { ManageFundsModal } from "@/components/manage-funds-modal"
-import { FixedCostsModal } from "@/components/fixed-costs-modal"
 import { BudgetBreakdownModal } from "@/components/budget-breakdown-modal"
 import { TransactionLogDrawer } from "@/components/transaction-log-drawer"
 import { InvestorReportModal } from "@/components/investor-report-modal"
@@ -23,7 +22,6 @@ export default function FinancialDashboardPage() {
   const projectId = urlProjectId || searchParams.get("project") || currentProject?.id || currentProject?._id
   const canViewFinancial = hasPermission('can_view_financial')
   const [showManageFunds, setShowManageFunds] = useState(false)
-  const [showFixedCosts, setShowFixedCosts] = useState(false)
   const [showBudgetBreakdown, setShowBudgetBreakdown] = useState(false)
   const [showTransactionLog, setShowTransactionLog] = useState(false)
   const [showInvestorReport, setShowInvestorReport] = useState(false)
@@ -152,8 +150,8 @@ export default function FinancialDashboardPage() {
                   Investor Report
                 </Button>
               )}
-              <Button variant="outline" onClick={() => setShowFixedCosts(true)}>
-                Fixed Costs
+              <Button variant="outline" onClick={() => setShowTransactionLog(true)}>
+                Transaction Log
               </Button>
               <Button onClick={() => setShowManageFunds(true)}>
                 <DollarSign className="mr-2 h-4 w-4" />
@@ -173,10 +171,9 @@ export default function FinancialDashboardPage() {
           <>
             {/* Budget Overview Cards */}
             <div className="grid gap-6 md:grid-cols-4 lg:grid-cols-6 mb-8">
-              <Card
-                className="cursor-pointer hover:border-primary transition-colors"
-                onClick={() => setShowTransactionLog(true)}
-              >
+              <UITooltip>
+                <TooltipTrigger asChild>
+              <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Planned Value (PV)</CardTitle>
                   <DollarSign className="h-4 w-4 text-muted-foreground" />
@@ -186,7 +183,14 @@ export default function FinancialDashboardPage() {
                   <p className="text-xs text-muted-foreground mt-1">Budget baseline</p>
                 </CardContent>
               </Card>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Planned Value: Approved budget for scheduled work (Hours × Role Rate).
+                </TooltipContent>
+              </UITooltip>
 
+              <UITooltip>
+                <TooltipTrigger asChild>
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Actual Cost (AC)</CardTitle>
@@ -199,7 +203,14 @@ export default function FinancialDashboardPage() {
                   </p>
                 </CardContent>
               </Card>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Actual Cost: Real money spent (Role Salaries + Expenses - Income) based on effective dates.
+                </TooltipContent>
+              </UITooltip>
 
+              <UITooltip>
+                <TooltipTrigger asChild>
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Earned Value (EV)</CardTitle>
@@ -210,8 +221,15 @@ export default function FinancialDashboardPage() {
                   <p className="text-xs text-muted-foreground mt-1">Work completed</p>
                 </CardContent>
               </Card>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Earned Value: Budget value of authorized work actually completed.
+                </TooltipContent>
+              </UITooltip>
 
               {/* Schedule Variance Widget */}
+              <UITooltip>
+                <TooltipTrigger asChild>
               <Card className={scheduleVariance < 0 ? "border-warning/50 bg-warning/5" : scheduleVariance > 0 ? "border-green-500/50 bg-green-500/5" : ""}>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <div className="flex items-center gap-2">
@@ -246,8 +264,15 @@ export default function FinancialDashboardPage() {
                   </p>
                 </CardContent>
               </Card>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Schedule Variance: EV - PV. (Positive = Ahead of Schedule).
+                </TooltipContent>
+              </UITooltip>
 
               {/* Cost Variance Widget */}
+              <UITooltip>
+                <TooltipTrigger asChild>
               <Card className={costVariance < 0 ? "border-destructive/50 bg-destructive/5" : costVariance > 0 ? "border-green-500/50 bg-green-500/5" : ""}>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <div className="flex items-center gap-2">
@@ -282,7 +307,14 @@ export default function FinancialDashboardPage() {
                   </p>
                 </CardContent>
               </Card>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Cost Variance: EV - AC. (Positive = Under Budget/Savings).
+                </TooltipContent>
+              </UITooltip>
 
+              <UITooltip>
+                <TooltipTrigger asChild>
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Remaining</CardTitle>
@@ -295,6 +327,11 @@ export default function FinancialDashboardPage() {
                   <p className="text-xs text-muted-foreground mt-1">{budgetHealth.toFixed(1)}% remaining</p>
                 </CardContent>
               </Card>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Funds Left: (Total Injected Funds) - (Actual Cost).
+                </TooltipContent>
+              </UITooltip>
             </div>
 
             {/* EVM S-Curve Chart */}
@@ -428,7 +465,6 @@ export default function FinancialDashboardPage() {
         onTransactionCreated={handleTransactionCreated}
         projectId={projectId || undefined}
       />
-      <FixedCostsModal open={showFixedCosts} onOpenChange={setShowFixedCosts} />
       <BudgetBreakdownModal open={showBudgetBreakdown} onOpenChange={setShowBudgetBreakdown} />
       <TransactionLogDrawer 
         open={showTransactionLog} 

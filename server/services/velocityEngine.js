@@ -36,12 +36,15 @@ export async function getMemberVelocity(projectId, userId, startDate, endDate) {
     }
 
     const workSchedule = project.workSchedule || {
-      workingDaysPerWeek: 5,
+      workingDays: [1, 2, 3, 4, 5],
       hoursPerDay: 8,
     };
 
-    // Calculate working hours per week
-    const hoursPerWeek = workSchedule.workingDaysPerWeek * workSchedule.hoursPerDay;
+    // Calculate working hours per week based on configured working days
+    const workingDaysPerWeek = Array.isArray(workSchedule.workingDays) && workSchedule.workingDays.length > 0
+      ? workSchedule.workingDays.length
+      : 5;
+    const hoursPerWeek = workingDaysPerWeek * (workSchedule.hoursPerDay || 8);
 
     // Calculate capacity for the period (in weeks)
     const daysDiff = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));

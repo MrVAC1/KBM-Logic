@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react"
-import { format } from "date-fns"
+import { format, formatDistanceToNow } from "date-fns"
 import { motion } from "framer-motion"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -21,8 +21,8 @@ export default function ProjectInfoPage() {
   const [showMembersModal, setShowMembersModal] = useState(false)
   const [isEditingSchedule, setIsEditingSchedule] = useState(false)
   const [workSchedule, setWorkSchedule] = useState({
-    workingDaysPerWeek: currentProject?.workSchedule?.workingDaysPerWeek || 5,
-    daysOffPerWeek: currentProject?.workSchedule?.daysOffPerWeek || 2,
+    workingDaysPerWeek: currentProject?.workSchedule?.workingDays?.length || currentProject?.workSchedule?.workingDaysPerWeek || 5,
+    daysOffPerWeek: 7 - (currentProject?.workSchedule?.workingDays?.length || currentProject?.workSchedule?.workingDaysPerWeek || 5),
     hoursPerDay: currentProject?.workSchedule?.hoursPerDay || 8,
   })
   const [isSaving, setIsSaving] = useState(false)
@@ -30,6 +30,8 @@ export default function ProjectInfoPage() {
   const [deadline, setDeadline] = useState<Date | undefined>(
     currentProject?.deadline ? new Date(currentProject.deadline) : undefined
   )
+  const [activityItems, setActivityItems] = useState<any[]>([])
+  const [activityLoading, setActivityLoading] = useState(false)
   
   const canManageWorkSchedule = hasPermission('can_manage_work_schedule')
   const canManageSettings = hasPermission('can_manage_settings') || hasPermission('can_edit_budget')
@@ -66,8 +68,8 @@ export default function ProjectInfoPage() {
   useEffect(() => {
     if (currentProject?.workSchedule) {
       setWorkSchedule({
-        workingDaysPerWeek: currentProject.workSchedule.workingDaysPerWeek || 5,
-        daysOffPerWeek: currentProject.workSchedule.daysOffPerWeek || 2,
+        workingDaysPerWeek: currentProject.workSchedule.workingDays?.length || currentProject.workSchedule.workingDaysPerWeek || 5,
+        daysOffPerWeek: 7 - (currentProject.workSchedule.workingDays?.length || currentProject.workSchedule.workingDaysPerWeek || 5),
         hoursPerDay: currentProject.workSchedule.hoursPerDay || 8,
       })
     }
@@ -81,6 +83,34 @@ export default function ProjectInfoPage() {
       setDeadline(undefined)
     }
   }, [currentProject])
+
+  // Fetch recent activity
+  useEffect(() => {
+    if (!projectId) return
+    const fetchActivity = async () => {
+      try {
+        setActivityLoading(true)
+        const response = await projectsAPI.getActivity(projectId)
+        const data = response.data?.data || response.data
+        setActivityItems(data?.activity || data || [])
+      } catch (error: any) {
+        console.error('Failed to load activity:', error)
+      } finally {
+        setActivityLoading(false)
+      }
+    }
+    fetchActivity()
+  }, [projectId])
+
+  const activityColor = (type: string) => {
+    const critical = ['RATE_CHANGE', 'TRANSACTION_ADDED', 'BUDGET_OVERRUN']
+    const operational = ['TASK_CREATED', 'STATUS_CHANGE']
+    const team = ['MEMBER_ADDED', 'ROLE_ASSIGNED']
+    if (critical.includes(type)) return 'border-amber-500/60 bg-amber-500/5'
+    if (operational.includes(type)) return 'border-blue-500/60 bg-blue-500/5'
+    if (team.includes(type)) return 'border-emerald-500/60 bg-emerald-500/5'
+    return 'border-border'
+  }
 
   const handleSaveSchedule = async () => {
     if (!projectId || !canManageWorkSchedule) return
@@ -108,10 +138,11 @@ export default function ProjectInfoPage() {
 
     setIsSaving(true)
     try {
+      const workingDays = Array.from({ length: Math.min(7, Math.max(1, workSchedule.workingDaysPerWeek)) }, (_, idx) => idx + 1) // 1=Mon ... default sequence
+
       await projectsAPI.update(projectId, {
         workSchedule: {
-          workingDaysPerWeek: parseInt(workSchedule.workingDaysPerWeek.toString()),
-          daysOffPerWeek: parseInt(workSchedule.daysOffPerWeek.toString()),
+          workingDays,
           hoursPerDay: parseFloat(workSchedule.hoursPerDay.toString()),
         },
       })
@@ -534,7 +565,7 @@ export default function ProjectInfoPage() {
             </CardContent>
           </Card>
 
-          {/* Recent Activity Card - Placeholder */}
+          {/* Recent Activity */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -544,9 +575,33 @@ export default function ProjectInfoPage() {
               <CardDescription>Latest project events and updates</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="flex items-center justify-center py-8">
-                <div className="text-sm text-muted-foreground">Activity feed coming soon</div>
-              </div>
+              {activityLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <p className="text-sm text-muted-foreground">Loading activity...</p>
+                </div>
+              ) : activityItems.length === 0 ? (
+                <div className="flex items-center justify-center py-8">
+                  <p className="text-sm text-muted-foreground">No recent activity</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {activityItems.map((item, idx) => (
+                    <div
+                      key={idx}
+                      className={`rounded-lg border p-3 flex items-start gap-3 ${activityColor(item.type)}`}
+                    >
+                      <div className="flex-1">
+                        <p className="text-sm font-medium">
+                          {item.user || 'Someone'} {item.action || 'performed an action'} {item.target ? `on ${item.target}` : ''}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {item.type} • {formatDistanceToNow(new Date(item.createdAt || item.timestamp || Date.now()), { addSuffix: true })}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>

@@ -99,7 +99,13 @@ export const createTask = async (req, res) => {
     }
 
     // Calculate plannedCost based on assignees' hourly rates
-    const plannedCost = await calculateTaskPlannedCost(project, estimateHours, assignees);
+    const plannedCost = await calculateTaskPlannedCost(
+      project,
+      estimateHours,
+      assignees,
+      taskData.startDate,
+      taskData.deadline
+    );
 
     const task = await Task.create({
       projectId,
@@ -112,7 +118,7 @@ export const createTask = async (req, res) => {
       deadline: taskData.deadline || undefined,
       estimateHours: estimateHours,
       plannedCost: plannedCost,
-      plannedValue: taskData.plannedValue || 0,
+      plannedValue: plannedCost, // PV driven by schedule * role rate
       risk: taskData.risk || {
         probability: 1,
         impact: 1,
@@ -215,19 +221,31 @@ export const updateTask = async (req, res) => {
     // Get project for calculating plannedCost
     const project = await Project.findById(task.projectId);
 
-    // If estimateHours or assignees are being updated, recalculate plannedCost
-    if (updates.estimateHours !== undefined || updates.assignees !== undefined) {
+    // If estimateHours, assignees, startDate, or deadline are being updated, recalculate plannedCost/PV
+    const shouldRecalculatePlannedCost = (
+      updates.estimateHours !== undefined ||
+      updates.assignees !== undefined ||
+      updates.startDate !== undefined ||
+      updates.deadline !== undefined
+    );
+
+    if (shouldRecalculatePlannedCost) {
       const estimateHours = updates.estimateHours !== undefined 
         ? parseFloat(updates.estimateHours) 
         : task.estimateHours;
       const assignees = updates.assignees !== undefined 
         ? (Array.isArray(updates.assignees) ? updates.assignees.filter(id => id) : [])
         : task.assignees;
+      const startDate = updates.startDate !== undefined ? updates.startDate : task.startDate;
+      const deadline = updates.deadline !== undefined ? updates.deadline : task.deadline;
 
-      if (project && estimateHours > 0 && assignees.length > 0) {
-        updates.plannedCost = await calculateTaskPlannedCost(project, estimateHours, assignees);
+      if (project && estimateHours > 0 && assignees && assignees.length > 0) {
+        const recalculated = await calculateTaskPlannedCost(project, estimateHours, assignees, startDate, deadline);
+        updates.plannedCost = recalculated;
+        updates.plannedValue = recalculated;
       } else {
         updates.plannedCost = 0;
+        updates.plannedValue = 0;
       }
     }
 

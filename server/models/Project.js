@@ -21,6 +21,35 @@ const fixedCostSchema = new mongoose.Schema({
   },
 }, { _id: true });
 
+const salaryHistorySchema = new mongoose.Schema({
+  rate: {
+    type: Number,
+    required: true,
+    min: 0,
+  },
+  effectiveDate: {
+    type: Date,
+    required: true,
+  },
+}, { _id: false });
+
+const roleCompSchema = new mongoose.Schema({
+  name: {
+    type: String,
+    required: true,
+    trim: true,
+  },
+  currentRate: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
+  salaryHistory: {
+    type: [salaryHistorySchema],
+    default: [],
+  },
+}, { _id: true });
+
 // All available permissions in the system
 const ALL_PERMISSIONS = [
   // View permissions
@@ -64,7 +93,8 @@ const memberSchema = new mongoose.Schema({
   // Legacy field for backward compatibility (will be populated from roles array)
   roleName: {
     type: String,
-    // No longer required, will be computed from roles[0] if exists
+    required: true,
+    default: 'Guest',
   },
   permissions: [{
     type: String,
@@ -143,6 +173,8 @@ const projectSchema = new mongoose.Schema({
     index: true,
   },
   fixedCosts: [fixedCostSchema],
+  // Financial role compensation
+  roles: [roleCompSchema],
   // Custom roles defined by project owner/admin
   customRoles: [{
     name: {
@@ -171,17 +203,13 @@ const projectSchema = new mongoose.Schema({
   members: [memberSchema],
   // Work schedule configuration
   workSchedule: {
-    workingDaysPerWeek: {
-      type: Number,
-      min: 1,
-      max: 7,
-      default: 5,
-    },
-    daysOffPerWeek: {
-      type: Number,
-      min: 0,
-      max: 6,
-      default: 2,
+    workingDays: {
+      type: [Number], // JS getDay() format: 0=Sun ... 6=Sat
+      default: [1, 2, 3, 4, 5], // Mon-Fri
+      validate: {
+        validator: (days) => Array.isArray(days) && days.every(d => d >= 0 && d <= 6),
+        message: 'workingDays must contain integers between 0 (Sun) and 6 (Sat)',
+      },
     },
     hoursPerDay: {
       type: Number,
