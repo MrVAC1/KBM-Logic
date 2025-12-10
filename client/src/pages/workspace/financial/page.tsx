@@ -34,7 +34,7 @@ export default function FinancialDashboardPage() {
   
   // Date range filter state
   type DateRangeType = 'last_30_days' | 'this_month' | 'this_year' | 'all_time'
-  const [dateRange, setDateRange] = useState<DateRangeType>('this_month')
+  const [dateRange, setDateRange] = useState<DateRangeType>('all_time')
   
   // Calculate date range based on selection
   const getDateRange = useMemo(() => {
