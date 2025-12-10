@@ -424,8 +424,11 @@ for (task in tasks) {
 ### Куди йде?
 
 **Відображення:**
-- Dashboard картка "Budget at Completion"
-- Використовується для обчислення "Remaining Work Budget" = `BAC - AC`
+- Dashboard картка "Budget at Completion (BAC)" на Фінансовому Dashboard
+- Показує загальний бюджет проєкту та "Remaining Work Budget" (BAC - AC)
+- Використовується для обчислення залишку роботи: `Remaining Work Budget = BAC - AC`
+
+**Примітка:** BAC відображається як перша картка на Фінансовому Dashboard, перед карткою PV.
 
 ---
 
@@ -703,11 +706,56 @@ instantBurnRate = (currentAC - acSevenDaysAgo) / (7 / 30.4375)
 **Якщо щось не працює:**
 1. Перевірте логи: `[EVM Warning]` повідомлення
 2. Перевірте дані: `estimateHours`, `status`, `assignees`, `role.currentRate`
-3. Використайте "Recalculate Financial Data" для оновлення snapshots
+3. Використайте "Recalculate Financial Data" (Налаштування → Danger Zone) для оновлення snapshots
+4. Переконайтеся, що `task.updatedAt` встановлено правильно для завершених задач (для EV розрахунків)
 
 ---
 
 **Версія:** 3.1  
 **Дата:** 2024  
 **Автор:** KBM Logic Development Team
+
+---
+
+## Додаток: S-Curve "Carry Forward" Логіка
+
+### Проблема: "Drop to Zero" Glitch
+
+Коли снапшот для поточної дати ще не згенерований, графік S-Curve може показати `AC = 0` або `EV = 0`, навіть якщо метрики на картках показують високі значення.
+
+### Рішення: Carry Forward
+
+**Логіка на Frontend (`client/src/pages/workspace/financial/page.tsx`):**
+
+```javascript
+// Якщо значення відсутнє або 0, використовуємо останнє відоме значення
+let lastAC = null;
+let lastEV = null;
+
+for (point in evmDataPoints) {
+  if (point.AC === null || point.AC === 0) {
+    if (lastAC !== null && lastAC > 0) {
+      point.AC = lastAC;  // Carry forward
+    }
+  } else {
+    lastAC = point.AC;  // Оновлюємо останнє відоме значення
+  }
+  
+  // Аналогічно для EV
+  if (point.EV === null || point.EV === 0) {
+    if (lastEV !== null && lastEV > 0) {
+      point.EV = lastEV;  // Carry forward
+    }
+  } else {
+    lastEV = point.EV;
+  }
+}
+```
+
+**Результат:**
+- Лінії AC та EV **НІКОЛИ** не падають до 0, якщо вони мали позитивне значення раніше
+- Лінії залишаються **горизонтальними** (flat) коли снапшот відсутній
+- Для поточної дати використовується значення з summary statistics (`stats.current.AC`, `stats.current.EV`)
+
+**Примітка:** PV завжди доступна (може бути 0, якщо немає задач), тому carry forward не потрібен для PV.
 
