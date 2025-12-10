@@ -122,17 +122,17 @@ export default function RisksPage() {
             <CardDescription>Click any cell to view tasks in that risk category</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="overflow-x-auto">
-              <div className="inline-block min-w-full">
+            <div className="flex justify-center">
+              <div className="max-w-2xl w-full">
                 {/* Impact Label (Top) */}
-                <div className="flex items-center mb-2">
-                  <div className="w-24 shrink-0" />
+                <div className="flex items-center mb-1">
+                  <div className="w-16 shrink-0" />
                   <div className="flex-1 text-center">
-                    <p className="text-sm font-medium text-muted-foreground mb-1">IMPACT →</p>
-                    <div className="flex">
+                    <p className="text-xs font-medium text-muted-foreground mb-0.5">IMPACT →</p>
+                    <div className="flex gap-0.5">
                       {[1, 2, 3, 4, 5].map((i) => (
                         <div key={i} className="flex-1 text-center">
-                          <span className="text-xs text-muted-foreground">{i}</span>
+                          <span className="text-[10px] text-muted-foreground">{i}</span>
                         </div>
                       ))}
                     </div>
@@ -142,18 +142,18 @@ export default function RisksPage() {
                 {/* Matrix Grid */}
                 <div className="flex">
                   {/* Probability Label (Left) */}
-                  <div className="w-24 shrink-0 flex flex-col justify-center items-center">
+                  <div className="w-16 shrink-0 flex flex-col justify-center items-center">
                     <div className="transform -rotate-90 whitespace-nowrap">
-                      <p className="text-sm font-medium text-muted-foreground">← PROBABILITY</p>
+                      <p className="text-xs font-medium text-muted-foreground">← PROBABILITY</p>
                     </div>
                   </div>
 
                   {/* Grid Cells */}
                   <div className="flex-1">
                     {[5, 4, 3, 2, 1].map((probability) => (
-                      <div key={probability} className="flex mb-2 last:mb-0">
-                        <div className="w-12 flex items-center justify-center shrink-0">
-                          <span className="text-xs text-muted-foreground">{probability}</span>
+                      <div key={probability} className="flex gap-1 mb-1 last:mb-0">
+                        <div className="w-8 flex items-center justify-center shrink-0">
+                          <span className="text-[10px] text-muted-foreground">{probability}</span>
                         </div>
                         {[1, 2, 3, 4, 5].map((impact) => {
                           const tasks = getCellTasks(probability, impact)
@@ -164,27 +164,18 @@ export default function RisksPage() {
                               key={`${probability}-${impact}`}
                               onClick={() => setSelectedCell({ probability, impact })}
                               className={`
-                                flex-1 aspect-square rounded-lg border-2 transition-all
-                                flex flex-col items-center justify-center p-2
+                                flex-1 h-24 rounded-md border transition-all
+                                flex flex-col items-center justify-center p-1
                                 ${getRiskColor(probability, impact)}
-                                ${tasks.length > 0 ? "cursor-pointer" : "cursor-default opacity-60"}
+                                ${tasks.length > 0 ? "cursor-pointer hover:scale-105" : "cursor-default opacity-60"}
                               `}
                             >
-                              <div className={`text-2xl font-bold mb-1 ${getCellTextColor(probability, impact)}`}>
+                              <div className={`text-base font-bold leading-tight ${getCellTextColor(probability, impact)}`}>
                                 {score}
                               </div>
                               {tasks.length > 0 && (
-                                <div className="flex flex-wrap gap-1 justify-center">
-                                  {tasks.slice(0, 3).map((task) => (
-                                    <Badge key={task.id} variant="secondary" className="text-xs px-1 py-0">
-                                      {task.title.slice(0, 3).toUpperCase()}
-                                    </Badge>
-                                  ))}
-                                  {tasks.length > 3 && (
-                                    <Badge variant="secondary" className="text-xs px-1 py-0">
-                                      +{tasks.length - 3}
-                                    </Badge>
-                                  )}
+                                <div className="flex flex-wrap gap-0.5 justify-center mt-0.5">
+                                  <span className="text-[10px] text-muted-foreground font-medium">{tasks.length}</span>
                                 </div>
                               )}
                             </button>
