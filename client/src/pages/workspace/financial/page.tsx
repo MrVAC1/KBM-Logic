@@ -2,7 +2,7 @@ import { useMemo, useState, useEffect } from "react"
 import { useSearchParams } from "react-router-dom"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { TrendingUp, TrendingDown, DollarSign, Calendar, ArrowUp, ArrowDown, Info } from "lucide-react"
+import { TrendingUp, TrendingDown, DollarSign, Calendar, ArrowUp, ArrowDown, Info, Target } from "lucide-react"
 import { Area, Line, ComposedChart, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts"
 import { financials as financialsAPI } from "@/services/api"
 import { useProject } from "@/contexts/ProjectContext"
@@ -154,18 +154,156 @@ export default function FinancialDashboardPage() {
     setTransactionRefreshTrigger(prev => prev + 1)
   }
 
-  // Format EVM data for chart
+  // Format EVM data for chart with "carry forward" logic to prevent zero-dropouts
   const evmData = useMemo(() => {
     if (!stats?.evmDataPoints || stats.evmDataPoints.length === 0) {
       return []
     }
 
-    return stats.evmDataPoints.map((point: any) => ({
-      date: new Date(point.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-      PV: point.PV || 0,
-      AC: point.AC || 0,
-      EV: point.EV || 0,
-    }))
+    // Get current values from summary stats as fallback
+    const currentACFromStats = stats?.current?.AC ?? null;
+    const currentEVFromStats = stats?.current?.EV ?? null;
+
+    // Sort by date to ensure chronological order
+    const sortedPoints = [...stats.evmDataPoints].sort((a, b) => {
+      const dateA = new Date(a.date).getTime();
+      const dateB = new Date(b.date).getTime();
+      return dateA - dateB;
+    });
+
+    // Carry forward logic: track last known values for AC and EV
+    // This prevents lines from dropping to 0 when a snapshot is missing for the current date
+    let lastAC: number | null = null;
+    let lastEV: number | null = null;
+
+    let processedPoints = sortedPoints.map((point: any, index: number) => {
+      // Check if this is the last point
+      const isLastPoint = index === sortedPoints.length - 1;
+      const originalDateStr = point.date; // Keep original ISO date string (YYYY-MM-DD)
+      const pointDate = new Date(originalDateStr);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const isToday = pointDate.getTime() === today.getTime();
+      // PV is always available (can be 0 if no tasks)
+      const pv = point.PV || 0;
+      
+      // AC: Use point value if valid, otherwise carry forward last known value
+      let ac: number;
+      const acValue = point.AC;
+      const hasValidAC = acValue !== null && acValue !== undefined && !isNaN(acValue);
+      
+      if (hasValidAC && acValue > 0) {
+        // Valid positive AC value - use it and update last known
+        ac = acValue;
+        lastAC = ac;
+      } else if (hasValidAC && acValue === 0 && lastAC !== null && lastAC > 0) {
+        // AC is 0 but we had a previous positive value - carry forward (prevent drop to 0)
+        ac = lastAC;
+      } else if (lastAC !== null && lastAC > 0) {
+        // Missing/null/undefined AC but we have a previous positive value - carry forward
+        ac = lastAC;
+      } else if (hasValidAC) {
+        // Valid AC value (including 0) but no previous value - use it
+        ac = acValue;
+        if (ac > 0) {
+          lastAC = ac;
+        }
+      } else {
+        // No valid value - check if this is today and we have summary stats
+        if (isToday && currentACFromStats !== null && currentACFromStats > 0) {
+          // Use summary stats value for today as fallback
+          ac = currentACFromStats;
+          lastAC = ac;
+        } else if (lastAC !== null && lastAC > 0) {
+          // Carry forward if we have a previous value
+          ac = lastAC;
+        } else {
+          // No previous value and no fallback - use 0
+          ac = 0;
+        }
+      }
+      
+      // EV: Use point value if valid, otherwise carry forward last known value
+      let ev: number;
+      const evValue = point.EV;
+      const hasValidEV = evValue !== null && evValue !== undefined && !isNaN(evValue);
+      
+      if (hasValidEV && evValue > 0) {
+        // Valid positive EV value - use it and update last known
+        ev = evValue;
+        lastEV = ev;
+      } else if (hasValidEV && evValue === 0 && lastEV !== null && lastEV > 0) {
+        // EV is 0 but we had a previous positive value - carry forward (prevent drop to 0)
+        ev = lastEV;
+      } else if (lastEV !== null && lastEV > 0) {
+        // Missing/null/undefined EV but we have a previous positive value - carry forward
+        ev = lastEV;
+      } else if (hasValidEV) {
+        // Valid EV value (including 0) but no previous value - use it
+        ev = evValue;
+        if (ev > 0) {
+          lastEV = ev;
+        }
+      } else {
+        // No valid value - check if this is today and we have summary stats
+        if (isToday && currentEVFromStats !== null && currentEVFromStats > 0) {
+          // Use summary stats value for today as fallback
+          ev = currentEVFromStats;
+          lastEV = ev;
+        } else if (lastEV !== null && lastEV > 0) {
+          // Carry forward if we have a previous value
+          ev = lastEV;
+        } else {
+          // No previous value and no fallback - use 0
+          ev = 0;
+        }
+      }
+
+      return {
+        date: new Date(originalDateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        originalDate: originalDateStr, // Keep original ISO date string (YYYY-MM-DD) for comparison
+        PV: pv,
+        AC: ac,
+        EV: ev,
+      };
+    });
+
+    // Final pass: If the last point(s) have EV/AC = 0 but summary stats show positive values,
+    // use summary stats as the authoritative source for recent points
+    if (processedPoints.length > 0 && (currentACFromStats !== null || currentEVFromStats !== null)) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      // Check the last 3 points (to handle cases where today might not be the exact last point)
+      const recentPoints = processedPoints.slice(-3);
+      
+      for (const point of recentPoints) {
+        try {
+          // Use originalDate (ISO string YYYY-MM-DD) for accurate date comparison
+          if (point.originalDate) {
+            const pointDate = new Date(point.originalDate);
+            pointDate.setHours(0, 0, 0, 0);
+            const daysDiff = Math.abs((pointDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+            
+            // If point is within 7 days of today and has 0 value, use summary stats
+            if (daysDiff <= 7) {
+              // Use summary stats as fallback if chart data shows 0 but stats show positive
+              if (point.AC === 0 && currentACFromStats !== null && currentACFromStats > 0) {
+                point.AC = currentACFromStats;
+              }
+              if (point.EV === 0 && currentEVFromStats !== null && currentEVFromStats > 0) {
+                point.EV = currentEVFromStats;
+              }
+            }
+          }
+        } catch (error) {
+          // Skip if date parsing fails
+          continue;
+        }
+      }
+    }
+
+    return processedPoints;
   }, [stats])
 
   // Get current values with safety checks
@@ -177,18 +315,28 @@ export default function FinancialDashboardPage() {
   const scheduleVariance = stats?.variances?.scheduleVariance ?? (currentEV - currentPV)
   const costVariance = stats?.variances?.costVariance ?? (currentEV - currentAC)
 
-  // Budget calculation (includes income transactions)
-  // Use API values if available, otherwise calculate from current values
-  const totalAdditionalFunds = stats?.budget?.totalAdditionalFunds ?? 0
+  // BAC (Budget at Completion) - Total planned value of ALL tasks
+  const bac = stats?.budget?.bac ?? 0
+  
+  // Remaining Work Budget = BAC - AC (how much budget is left for the work)
+  const remainingWorkBudget = stats?.budget?.remainingWork ?? Math.max(0, bac - currentAC)
+  
+  // Project Funds (Cash) - Income minus Expenses
+  const projectFunds = stats?.funds?.available ?? 0
+  
+  // Funds Remaining (Cash Runway) = Funds - AC
+  const fundsRemaining = Math.max(0, projectFunds - currentAC)
+  
+  // Budget calculation (includes income transactions) - Legacy for PV card
+  const totalAdditionalFunds = stats?.budget?.totalAdditionalFunds ?? stats?.totalAdditionalFunds ?? 0
   const totalBudget = stats?.budget?.baseline 
     ? (stats.budget.baseline + totalAdditionalFunds)
     : (currentPV + totalAdditionalFunds)
   const actualSpent = currentAC || 0
-  const remainingBudget = stats?.budget?.remaining ?? stats?.remaining ?? Math.max(0, totalBudget - actualSpent)
   
-  // Budget health calculation (percentage of budget remaining)
-  const budgetHealth = totalBudget > 0 
-    ? (remainingBudget / totalBudget) * 100 
+  // Budget health calculation (percentage of BAC remaining)
+  const budgetHealth = bac > 0 
+    ? (remainingWorkBudget / bac) * 100 
     : 0
   const isOverBudget = budgetHealth < 10
 
@@ -245,7 +393,46 @@ export default function FinancialDashboardPage() {
         ) : (
           <>
             {/* Budget Overview Cards */}
-            <div className="grid gap-6 md:grid-cols-4 lg:grid-cols-6 mb-8">
+            <div className="grid gap-6 md:grid-cols-4 lg:grid-cols-7 mb-8">
+              {/* Budget at Completion (BAC) */}
+              <UITooltip>
+                <TooltipTrigger asChild>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <div className="flex items-center gap-2">
+                    <CardTitle className="text-sm font-medium">Budget at Completion (BAC)</CardTitle>
+                    <TooltipProvider>
+                      <UITooltip>
+                        <TooltipTrigger asChild>
+                          <Info className="h-3 w-3 text-muted-foreground cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Total Budget at Completion. The sum of estimates for all tasks in the project.</p>
+                          <p className="text-xs mt-1">Your 'Cost Baseline' - the total planned value regardless of time.</p>
+                        </TooltipContent>
+                      </UITooltip>
+                    </TooltipProvider>
+                  </div>
+                  <Target className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-primary">${bac.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Total project budget
+                  </p>
+                  {bac > 0 && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Remaining Work: ${remainingWorkBudget.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Budget at Completion: Total planned value of all tasks (your cost baseline).
+                </TooltipContent>
+              </UITooltip>
+
               <UITooltip>
                 <TooltipTrigger asChild>
               <Card>
@@ -267,7 +454,7 @@ export default function FinancialDashboardPage() {
                   <DollarSign className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-primary">${totalBudget.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                  <div className="text-2xl font-bold text-primary">${currentPV.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
                   <p className="text-xs text-muted-foreground mt-1">
                     Budget baseline {dateRange !== 'all_time' && `(${dateRange.replace('_', ' ')})`}
                   </p>
@@ -436,7 +623,7 @@ export default function FinancialDashboardPage() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <div className="flex items-center gap-2">
-                    <CardTitle className="text-sm font-medium">Remaining</CardTitle>
+                    <CardTitle className="text-sm font-medium">Funds Remaining</CardTitle>
                     <TooltipProvider>
                       <UITooltip>
                         <TooltipTrigger asChild>
@@ -444,7 +631,8 @@ export default function FinancialDashboardPage() {
                         </TooltipTrigger>
                         <TooltipContent>
                           <p>Cash Runway. The real money left on the project accounts.</p>
-                          <p className="text-xs mt-1">Calculated as: (Total Injected Funds/Income) - (Total Actual Cost)</p>
+                          <p className="text-xs mt-1">Calculated as: (Total Income) - (Total Expenses) - (Actual Cost)</p>
+                          <p className="text-xs mt-1">This is your available cash, not your work budget.</p>
                         </TooltipContent>
                       </UITooltip>
                     </TooltipProvider>
@@ -452,15 +640,17 @@ export default function FinancialDashboardPage() {
                   <Calendar className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className={`text-2xl font-bold ${isOverBudget ? "text-warning" : "text-foreground"}`}>
-                    ${remainingBudget.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  <div className={`text-2xl font-bold ${fundsRemaining < 0 ? "text-destructive" : "text-foreground"}`}>
+                    ${fundsRemaining.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1">{budgetHealth.toFixed(1)}% remaining</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {projectFunds > 0 ? ((fundsRemaining / projectFunds) * 100).toFixed(1) : '0'}% of funds
+                  </p>
                 </CardContent>
               </Card>
                 </TooltipTrigger>
                 <TooltipContent>
-                  Funds Left: (Total Injected Funds) - (Actual Cost).
+                  Funds Remaining: Available cash (Income - Expenses - Actual Cost).
                 </TooltipContent>
               </UITooltip>
             </div>
@@ -531,15 +721,16 @@ export default function FinancialDashboardPage() {
                           labelFormatter={(label) => `Date: ${label}`}
                         />
                         <Legend wrapperStyle={{ color: "#ffffff" }} iconType="line" />
-                        {/* PV Line - Dashed Gray/Blue (The Plan) */}
-                        <Line
+                        {/* PV Area - Gray background (The Plan) */}
+                        <Area
                           type="monotone"
                           dataKey="PV"
-                          stroke="#6b7280"
+                          fill="url(#pvGradient)"
+                          stroke="#9CA3AF"
                           strokeWidth={2}
                           strokeDasharray="5 5"
-                          dot={{ fill: "#6b7280", r: 3 }}
                           name="Planned Value (PV)"
+                          dot={false}
                         />
                         {/* AC Line - Solid Red/Orange (The Spend) */}
                         <Line

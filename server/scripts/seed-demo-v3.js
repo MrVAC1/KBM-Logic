@@ -333,35 +333,37 @@ const seedDemoProjects = async () => {
     const neobankCustomRoles = formatCustomRolesForProject(ALPHA_ROLES, neobankStartDate);
 
     // Assign members with roles from ALPHA_ROLES
+    // CRITICAL: Set joinedAt to project start date so salary costs are calculated from Day 1
     const neobankMembers = [
       {
         userId: owner._id,
         roles: ['Owner', 'Solutions Architect'], // Owner also has functional role
         roleName: 'Owner',
         permissions: ALL_PERMISSIONS,
+        joinedAt: neobankStartDate, // Member active from project start
       },
       // Solutions Architects (2)
-      { userId: users.daniel_architect._id, roles: ['Solutions Architect'], roleName: 'Solutions Architect' },
-      { userId: users.laura_architect._id, roles: ['Solutions Architect'], roleName: 'Solutions Architect' },
+      { userId: users.daniel_architect._id, roles: ['Solutions Architect'], roleName: 'Solutions Architect', joinedAt: neobankStartDate },
+      { userId: users.laura_architect._id, roles: ['Solutions Architect'], roleName: 'Solutions Architect', joinedAt: neobankStartDate },
       // Senior Backend Devs (3)
-      { userId: users.alex_backend._id, roles: ['Senior Backend Dev'], roleName: 'Senior Backend Dev' },
-      { userId: users.sarah_backend._id, roles: ['Senior Backend Dev'], roleName: 'Senior Backend Dev' },
-      { userId: users.mike_backend._id, roles: ['Senior Backend Dev'], roleName: 'Senior Backend Dev' },
+      { userId: users.alex_backend._id, roles: ['Senior Backend Dev'], roleName: 'Senior Backend Dev', joinedAt: neobankStartDate },
+      { userId: users.sarah_backend._id, roles: ['Senior Backend Dev'], roleName: 'Senior Backend Dev', joinedAt: neobankStartDate },
+      { userId: users.mike_backend._id, roles: ['Senior Backend Dev'], roleName: 'Senior Backend Dev', joinedAt: neobankStartDate },
       // Frontend Leads (2)
-      { userId: users.james_frontend._id, roles: ['Frontend Lead'], roleName: 'Frontend Lead' },
-      { userId: users.lisa_frontend._id, roles: ['Frontend Lead'], roleName: 'Frontend Lead' },
+      { userId: users.james_frontend._id, roles: ['Frontend Lead'], roleName: 'Frontend Lead', joinedAt: neobankStartDate },
+      { userId: users.lisa_frontend._id, roles: ['Frontend Lead'], roleName: 'Frontend Lead', joinedAt: neobankStartDate },
       // Frontend Dev (1)
-      { userId: users.david_frontend._id, roles: ['Frontend Lead'], roleName: 'Frontend Lead' },
+      { userId: users.david_frontend._id, roles: ['Frontend Lead'], roleName: 'Frontend Lead', joinedAt: neobankStartDate },
       // UI/UX Designers (2)
-      { userId: users.amanda_designer._id, roles: ['UI/UX Designer'], roleName: 'UI/UX Designer' },
-      { userId: users.ryan_designer._id, roles: ['UI/UX Designer'], roleName: 'UI/UX Designer' },
+      { userId: users.amanda_designer._id, roles: ['UI/UX Designer'], roleName: 'UI/UX Designer', joinedAt: neobankStartDate },
+      { userId: users.ryan_designer._id, roles: ['UI/UX Designer'], roleName: 'UI/UX Designer', joinedAt: neobankStartDate },
       // QA Engineers (2)
-      { userId: users.robert_qa._id, roles: ['QA Engineer'], roleName: 'QA Engineer' },
-      { userId: users.jennifer_qa._id, roles: ['QA Engineer'], roleName: 'QA Engineer' },
+      { userId: users.robert_qa._id, roles: ['QA Engineer'], roleName: 'QA Engineer', joinedAt: neobankStartDate },
+      { userId: users.jennifer_qa._id, roles: ['QA Engineer'], roleName: 'QA Engineer', joinedAt: neobankStartDate },
       // DevOps Engineer (1)
-      { userId: users.chris_devops._id, roles: ['DevOps Engineer'], roleName: 'DevOps Engineer' },
+      { userId: users.chris_devops._id, roles: ['DevOps Engineer'], roleName: 'DevOps Engineer', joinedAt: neobankStartDate },
       // Product Manager (1)
-      { userId: users.michelle_pm._id, roles: ['Product Manager'], roleName: 'Product Manager' },
+      { userId: users.michelle_pm._id, roles: ['Product Manager'], roleName: 'Product Manager', joinedAt: neobankStartDate },
     ];
 
     const neobankProject = await Project.create({
@@ -562,37 +564,39 @@ const seedDemoProjects = async () => {
     const erpCustomRoles = formatCustomRolesForProject(OMEGA_ROLES, erpStartDate);
 
     // Assign members with roles from OMEGA_ROLES
+    // CRITICAL: Set joinedAt to project start date so salary costs are calculated from Day 1
     const erpMembers = [
       {
         userId: owner._id,
         roles: ['Owner', 'System Architect'], // Owner also has functional role
         roleName: 'Owner',
         permissions: ALL_PERMISSIONS,
+        joinedAt: erpStartDate, // Member active from project start
       },
       // System Architects (2 - expensive!)
-      { userId: users.daniel_architect._id, roles: ['System Architect'], roleName: 'System Architect' },
-      { userId: users.laura_architect._id, roles: ['System Architect'], roleName: 'System Architect' },
+      { userId: users.daniel_architect._id, roles: ['System Architect'], roleName: 'System Architect', joinedAt: erpStartDate },
+      { userId: users.laura_architect._id, roles: ['System Architect'], roleName: 'System Architect', joinedAt: erpStartDate },
       // Legacy Code Experts (2 - very expensive!)
-      { userId: users.kevin_consultant._id, roles: ['Legacy Code Expert'], roleName: 'Legacy Code Expert' },
-      { userId: users.nancy_consultant._id, roles: ['Legacy Code Expert'], roleName: 'Legacy Code Expert' },
+      { userId: users.kevin_consultant._id, roles: ['Legacy Code Expert'], roleName: 'Legacy Code Expert', joinedAt: erpStartDate },
+      { userId: users.nancy_consultant._id, roles: ['Legacy Code Expert'], roleName: 'Legacy Code Expert', joinedAt: erpStartDate },
       // External Consultants (2 - extremely expensive!)
-      { userId: users.steven_senior._id, roles: ['External Consultant'], roleName: 'External Consultant' },
-      { userId: users.karen_senior._id, roles: ['External Consultant'], roleName: 'External Consultant' },
+      { userId: users.steven_senior._id, roles: ['External Consultant'], roleName: 'External Consultant', joinedAt: erpStartDate },
+      { userId: users.karen_senior._id, roles: ['External Consultant'], roleName: 'External Consultant', joinedAt: erpStartDate },
       // Database Admins (2 - expensive!)
-      { userId: users.alex_backend._id, roles: ['Database Admin'], roleName: 'Database Admin' },
-      { userId: users.sarah_backend._id, roles: ['Database Admin'], roleName: 'Database Admin' },
+      { userId: users.alex_backend._id, roles: ['Database Admin'], roleName: 'Database Admin', joinedAt: erpStartDate },
+      { userId: users.sarah_backend._id, roles: ['Database Admin'], roleName: 'Database Admin', joinedAt: erpStartDate },
       // Junior Devs (2 - cheap but many)
-      { userId: users.john_junior._id, roles: ['Junior Dev'], roleName: 'Junior Dev' },
-      { userId: users.jane_junior._id, roles: ['Junior Dev'], roleName: 'Junior Dev' },
+      { userId: users.john_junior._id, roles: ['Junior Dev'], roleName: 'Junior Dev', joinedAt: erpStartDate },
+      { userId: users.jane_junior._id, roles: ['Junior Dev'], roleName: 'Junior Dev', joinedAt: erpStartDate },
       // DevOps Engineers (2)
-      { userId: users.chris_devops._id, roles: ['DevOps Engineer'], roleName: 'DevOps Engineer' },
-      { userId: users.patricia_devops._id, roles: ['DevOps Engineer'], roleName: 'DevOps Engineer' },
+      { userId: users.chris_devops._id, roles: ['DevOps Engineer'], roleName: 'DevOps Engineer', joinedAt: erpStartDate },
+      { userId: users.patricia_devops._id, roles: ['DevOps Engineer'], roleName: 'DevOps Engineer', joinedAt: erpStartDate },
       // QA Leads (2)
-      { userId: users.robert_qa._id, roles: ['QA Lead'], roleName: 'QA Lead' },
-      { userId: users.jennifer_qa._id, roles: ['QA Lead'], roleName: 'QA Lead' },
+      { userId: users.robert_qa._id, roles: ['QA Lead'], roleName: 'QA Lead', joinedAt: erpStartDate },
+      { userId: users.jennifer_qa._id, roles: ['QA Lead'], roleName: 'QA Lead', joinedAt: erpStartDate },
       // Project Managers (2)
-      { userId: users.michelle_pm._id, roles: ['Project Manager'], roleName: 'Project Manager' },
-      { userId: users.thomas_pm._id, roles: ['Project Manager'], roleName: 'Project Manager' },
+      { userId: users.michelle_pm._id, roles: ['Project Manager'], roleName: 'Project Manager', joinedAt: erpStartDate },
+      { userId: users.thomas_pm._id, roles: ['Project Manager'], roleName: 'Project Manager', joinedAt: erpStartDate },
     ];
 
     const erpProject = await Project.create({

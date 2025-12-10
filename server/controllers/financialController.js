@@ -216,8 +216,9 @@ async function getChartData(project, projectId, res, startDate = null, endDate =
       let ev = null; // null for future dates
 
       // PV is calculated for all dates (extends to future)
+      // Pass startDate for date range filtering consistency
       try {
-        pv = await calculatePV(project, currentDate);
+        pv = await calculatePV(project, currentDate, startDate);
       } catch (error) {
         logger.warn(`Error calculating PV for date ${currentDate.toISOString()}: ${error.message}`);
       }
@@ -225,13 +226,16 @@ async function getChartData(project, projectId, res, startDate = null, endDate =
       // AC and EV only for dates <= today
       if (currentDate.getTime() <= today.getTime()) {
         try {
-          ac = await calculateAC(project, currentDate);
+          // Pass startDate to AC calculation for date range filtering consistency
+          ac = await calculateAC(project, currentDate, startDate);
         } catch (error) {
           logger.warn(`Error calculating AC for date ${currentDate.toISOString()}: ${error.message}`);
         }
 
         try {
-          ev = await calculateEV(project, currentDate);
+          // Pass startDate to EV calculation for date range filtering consistency
+          // This ensures chart data matches summary stats when date range is applied
+          ev = await calculateEV(project, currentDate, startDate);
         } catch (error) {
           logger.warn(`Error calculating EV for date ${currentDate.toISOString()}: ${error.message}`);
         }
