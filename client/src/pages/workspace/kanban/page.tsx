@@ -538,7 +538,7 @@ export default function KanbanPage() {
         </div>
       </div>
 
-      <div className="mx-auto max-w-7xl px-6 py-8">
+      <div className="w-full px-2 py-4">
         <div className="flex gap-4 overflow-x-auto pb-4">
           {columns.map((column) => {
             const columnTasks = getTasksByStatus(column.status)
