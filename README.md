@@ -189,7 +189,16 @@ kbm-logic-v0.1/
 
 ## License
 
-Private - All rights reserved
+## 🇬🇧 Copyright and Usage Notice
+
+This repository is published **strictly for portfolio demonstration purposes** and to showcase the author's technical skills to potential employers and collaborators.
+
+### Terms of Access:
+1. **Strict Prohibition of Use:** Any copying, forking, modification, distribution, commercial, or non-commercial use of the source code, architectural patterns, or any parts thereof is **strictly prohibited**.
+2. **Intellectual Property Rights:** All code, documentation, and materials are protected under applicable copyright laws (*All rights reserved*).
+3. **Enforcement:** Any unauthorized use, cloning for deployment, or plagiarism of this repository will result in legal action and formal takedown notices (including DMCA Takedown requests) submitted to the platform administration.
+
+If you wish to discuss licensing, collaboration, or utilization of specific architectural approaches, please contact the author directly.
 
 ---
 
